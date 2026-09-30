@@ -5,6 +5,8 @@ import { racePromiseWithAbortSignal } from "../infra/abort-signal.js";
 import { loadOrCreateProcessDeviceIdentity } from "../infra/device-identity.js";
 import { getPairedDevice } from "../infra/device-pairing.js";
 import { resolveOpenClawPackageRootSync } from "../infra/openclaw-root.js";
+import { decodePairingSetupCode } from "../pairing/setup-code.js";
+import type { WorkerNodeEnrollment } from "../plugins/capability-provider.types.js";
 import { getGatewayPluginMetadataSnapshot } from "../plugins/current-plugin-metadata-state.js";
 import type { PluginRegistry } from "../plugins/registry-types.js";
 import type { WorkerExecutionMode, WorkerProfile } from "../plugins/types.js";
@@ -374,6 +376,16 @@ export async function createGatewayWorkerEnvironmentRuntime(params: {
       return artifact;
     },
   };
+  const cloudWorkerCapabilities = new Map<
+    string,
+    {
+      record: WorkerEnvironmentRecord;
+      enrollment: WorkerNodeEnrollment;
+      target: string;
+      leaseId?: string;
+      expiresAtMs?: number;
+    }
+  >();
   const nodeEnrollment = createWorkerNodeEnrollmentManager({
     store: params.startup.store,
     getConfig: getRuntimeConfig,
@@ -382,6 +394,14 @@ export async function createGatewayWorkerEnvironmentRuntime(params: {
     transfer: nodeBootstrapTransfer,
     prepareArtifact: async (record, signal) =>
       (await prepareNodeArtifact(record.profileSnapshot, signal)).artifact,
+    onBootstrapCapability: (record, enrollment) => {
+      if (!("setupCode" in enrollment) || enrollment.mode !== "connect") {
+        return;
+      }
+      const key = `${record.environmentId}:${record.nodeSetupId ?? ""}:${record.ownerEpoch}`;
+      const payload = decodePairingSetupCode(enrollment.setupCode);
+      cloudWorkerCapabilities.set(key, { record, enrollment, target: payload.url });
+    },
   });
   let executeSessionTool: WorkerSessionToolExecutor = async () => {
     throw new Error("Worker session tools are unavailable");
@@ -424,6 +444,69 @@ export async function createGatewayWorkerEnvironmentRuntime(params: {
     prepareInstallation,
     ensureNodeWorkerBundle: nodeWorkerBundleInstaller,
     prepareNodeBootstrap: nodeEnrollment.prepare,
+    getCloudWorkerBootstrapCapability: (environmentId) => {
+      const record = params.startup.store.get(environmentId);
+      if (!record || !record.nodeSetupId) {
+        return undefined;
+      }
+      const key = `${environmentId}:${record.nodeSetupId}:${record.ownerEpoch}`;
+      const capability = cloudWorkerCapabilities.get(key);
+      if (
+        !capability ||
+        capability.record.nodeSetupId !== record.nodeSetupId ||
+        capability.record.ownerEpoch !== record.ownerEpoch
+      ) {
+        return undefined;
+      }
+      if (
+        record.destroyRequestedAtMs !== null ||
+        ["destroying", "destroyed", "failed", "orphaned"].includes(record.state)
+      ) {
+        cloudWorkerCapabilities.delete(key);
+        return undefined;
+      }
+      if (capability.expiresAtMs !== undefined && capability.expiresAtMs <= Date.now()) {
+        cloudWorkerCapabilities.delete(key);
+        return undefined;
+      }
+      if (capability.leaseId !== undefined && capability.leaseId !== record.leaseId) {
+        cloudWorkerCapabilities.delete(key);
+        return undefined;
+      }
+      if (!("setupCode" in capability.enrollment) || capability.enrollment.mode !== "connect") {
+        return undefined;
+      }
+      return {
+        setupCode: capability.enrollment.setupCode,
+        nodeSetupId: record.nodeSetupId,
+        ownerEpoch: record.ownerEpoch,
+        target: capability.target,
+      };
+    },
+    bindCloudWorkerBootstrapCapability: ({ environmentId, leaseId, expiresAtMs }) => {
+      const record = params.startup.store.get(environmentId);
+      if (!record || !record.nodeSetupId || record.leaseId === null) {
+        throw new Error("Cloud worker admission environment lease is unavailable");
+      }
+      if (record.destroyRequestedAtMs !== null) {
+        throw new Error("Cloud worker admission environment is being destroyed");
+      }
+      if (
+        !leaseId ||
+        leaseId !== record.leaseId ||
+        expiresAtMs <= Date.now() ||
+        expiresAtMs > record.expiresAtMs
+      ) {
+        throw new Error("Cloud worker admission lease binding is invalid");
+      }
+      const key = `${environmentId}:${record.nodeSetupId}:${record.ownerEpoch}`;
+      const capability = cloudWorkerCapabilities.get(key);
+      if (!capability) {
+        throw new Error("Cloud worker admission capability is no longer current");
+      }
+      capability.leaseId = leaseId;
+      capability.expiresAtMs = expiresAtMs;
+    },
     prepareNodeArtifacts: async (profileSnapshot, signal) => {
       const pin = new AbortController();
       try {

@@ -284,6 +284,51 @@ async function respondWorkerMutation(
 }
 
 export const environmentsHandlers: GatewayRequestHandlers = {
+  "runner.admission.provision": async ({ params, respond, context }) => {
+    if (!params || typeof params !== "object") {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "invalid runner admission"));
+      return;
+    }
+    const request = params as Record<string, unknown>;
+    const profileId = typeof request.profileId === "string" ? request.profileId.trim() : "";
+    const idempotencyKey =
+      typeof request.idempotencyKey === "string" ? request.idempotencyKey.trim() : "";
+    const leaseId = typeof request.leaseId === "string" ? request.leaseId.trim() : "";
+    const expiresAtMs = typeof request.expiresAtMs === "number" ? request.expiresAtMs : NaN;
+    if (!profileId || !idempotencyKey || !leaseId || !Number.isFinite(expiresAtMs)) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "invalid runner admission"));
+      return;
+    }
+    const service = context.workerEnvironmentService;
+    if (!service?.admitCloudWorker) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, "cloud worker admission unavailable"),
+      );
+      return;
+    }
+    try {
+      const result = await service.admitCloudWorker({
+        profileId,
+        idempotencyKey,
+        executionMode: request.executionMode === "remote-exec" ? "remote-exec" : "worker-turn",
+        expiresAtMs,
+        leaseId,
+      });
+      respond(true, result, undefined);
+    } catch (error) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, "runner admission failed", {
+          details: {
+            code: error && typeof error === "object" && "code" in error ? error.code : undefined,
+          },
+        }),
+      );
+    }
+  },
   "environments.list": async ({ params, respond, client, context }) => {
     if (!assertValidParams(params, validateEnvironmentsListParams, "environments.list", respond)) {
       return;

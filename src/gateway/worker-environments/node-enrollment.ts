@@ -37,6 +37,10 @@ type WorkerNodeEnrollmentManagerOptions = {
   ) => Promise<NodeBootstrapArtifact>;
   transfer: WorkerBootstrapArtifactTransferService;
   now?: () => number;
+  onBootstrapCapability?: (
+    record: WorkerEnvironmentRecord,
+    enrollment: WorkerNodeEnrollment,
+  ) => void;
 };
 
 export function createWorkerNodeEnrollmentManager(options: WorkerNodeEnrollmentManagerOptions) {
@@ -332,6 +336,7 @@ export function createWorkerNodeEnrollmentManager(options: WorkerNodeEnrollmentM
         },
       };
       enrollmentClosers.set(enrollment, binding.close);
+      options.onBootstrapCapability?.(record, enrollment);
       return enrollment;
     } catch (error) {
       binding.close();

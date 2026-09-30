@@ -92,6 +92,19 @@ type WorkerEnvironmentServiceOptions = WorkerProviderLifecycleInputOptions & {
   inferenceStore?: WorkerInferenceStore;
   placementStore?: WorkerSessionPlacementGate;
   executeSessionTool?: Parameters<typeof createWorkerTurnRpc>[0]["executeSessionTool"];
+  getCloudWorkerBootstrapCapability?: (environmentId: string) =>
+    | {
+        setupCode: string;
+        nodeSetupId: string;
+        ownerEpoch: number;
+        target: string;
+      }
+    | undefined;
+  bindCloudWorkerBootstrapCapability?: (input: {
+    environmentId: string;
+    leaseId: string;
+    expiresAtMs: number;
+  }) => void;
 };
 
 export type WorkerEnvironmentReconcileCore = (
@@ -556,6 +569,59 @@ export function createWorkerEnvironmentService(options: WorkerEnvironmentService
     return profile.provider;
   };
 
+  const admitCloudWorker = async (input: {
+    profileId: string;
+    idempotencyKey: string;
+    executionMode?: WorkerExecutionMode;
+    expiresAtMs: number;
+    leaseId: string;
+    signal?: AbortSignal;
+  }) => {
+    if (!Number.isSafeInteger(input.expiresAtMs) || input.expiresAtMs <= now()) {
+      throw serviceError("invalid_state", "Cloud worker admission expiry is invalid");
+    }
+    if (input.expiresAtMs > now() + 15 * 60_000) {
+      throw serviceError("invalid_state", "Cloud worker admission expiry exceeds fence");
+    }
+    const profile = options.getConfig().cloudWorkers?.profiles?.[input.profileId];
+    if (!profile) {
+      throw serviceError("profile_not_found", `Unknown worker profile: ${input.profileId}`);
+    }
+    const providerId = configuredProfileProviderId(input.profileId);
+    if (options.resolveProvider(providerId)?.requiresNodeEnrollment !== true) {
+      throw serviceError("invalid_profile", "Cloud worker admission requires node enrollment");
+    }
+    requireProviderExecutionMode(providerId, input.executionMode);
+    const result = await providerLifecycle.createWithProfile(
+      input.profileId,
+      input.idempotencyKey,
+      { executionMode: input.executionMode, signal: input.signal },
+    );
+    const capability = options.getCloudWorkerBootstrapCapability?.(result.environmentId);
+    if (!capability) {
+      throw serviceError("bootstrap_failure", "Cloud worker bootstrap capability was not retained");
+    }
+    if (
+      capability.nodeSetupId !== result.nodeSetupId ||
+      capability.ownerEpoch !== result.ownerEpoch
+    ) {
+      throw serviceError("invalid_state", "Cloud worker bootstrap capability binding changed");
+    }
+    options.bindCloudWorkerBootstrapCapability?.({
+      environmentId: result.environmentId,
+      leaseId: input.leaseId,
+      expiresAtMs: input.expiresAtMs,
+    });
+    return {
+      environmentId: result.environmentId,
+      nodeSetupId: capability.nodeSetupId,
+      ownerEpoch: capability.ownerEpoch,
+      leaseId: input.leaseId,
+      expiresAtMs: input.expiresAtMs,
+      bootstrap: { target: capability.target, credential: capability.setupCode },
+    };
+  };
+
   const prepareBuild = createWorkerEnvironmentBuildPreparation({
     store,
     getConfig: options.getConfig,
@@ -571,6 +637,7 @@ export function createWorkerEnvironmentService(options: WorkerEnvironmentService
   });
 
   const service = {
+    admitCloudWorker,
     prepare: (request: { profileId: string; projectPath: string }, authorize?: () => void) =>
       trackOperation(prepareBuild(request, authorize)),
     isStopping: () => stopping,
