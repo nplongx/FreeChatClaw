@@ -90,6 +90,8 @@ export function resolveWorkerToolAuthority(params: {
   portalAvailable?: boolean;
 }): WorkerToolAuthority {
   const turn = params.turn;
+  const isM12NativeSpecialist =
+    turn.sessionKey?.startsWith("agent:m12-") === true && turn.sessionKey.includes(":specialist:");
   const defaults = resolveExecDefaults({
     cfg: turn.config,
     sessionEntry: turn.execSession,
@@ -120,7 +122,11 @@ export function resolveWorkerToolAuthority(params: {
           ...(node ? { node } : {}),
         }
       : { host, security, ask, safeBins: [] };
-  if (turn.disableTools === true || turn.modelRun === true || turn.promptMode === "none") {
+  if (
+    turn.disableTools === true ||
+    (turn.modelRun === true && !isM12NativeSpecialist) ||
+    turn.promptMode === "none"
+  ) {
     return { allowedToolNames: [], exec };
   }
   const runtimeCappedTools = applyEmbeddedAttemptToolsAllow(

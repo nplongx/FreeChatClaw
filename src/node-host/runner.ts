@@ -92,6 +92,7 @@ async function runM12SpecialistRequest(
           !String(error).includes(
             "M12 specialist environment did not become ready with the admitted node binding",
           ) &&
+          !String(error).includes("node pairing changed before request dispatch") &&
           !String(error).includes("gateway request timeout for m12.specialist.start")
         ) {
           throw error;

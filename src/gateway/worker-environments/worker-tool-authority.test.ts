@@ -395,4 +395,15 @@ describe("resolveWorkerToolAuthority", () => {
       expect(authority(overrides)).toEqual([]);
     },
   );
+
+  it("keeps required local tools for native M12 specialist model runs", () => {
+    expect(
+      authority({
+        sessionKey: "agent:m12-phase4-task-19:specialist:1",
+        agentId: "m12-phase4-task-19",
+        config: { agents: { list: [{ id: "m12-phase4-task-19", default: true }] } },
+        modelRun: true,
+      }),
+    ).toContain("exec");
+  });
 });
