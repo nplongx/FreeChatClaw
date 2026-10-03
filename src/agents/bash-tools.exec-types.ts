@@ -35,6 +35,19 @@ export type ExecToolDefaults = {
   node?: string;
   /** Default working directory for node-host execution only. */
   nodeCwd?: string;
+  workerWorkspaceExec?: (request: {
+    argv: string[];
+    input?: string;
+    timeoutMs?: number;
+  }) => Promise<{
+    stdout: string;
+    stderr: string;
+    code: number | null;
+    signal: string | null;
+    killed: boolean;
+    termination: "exit" | "timeout" | "no-output-timeout" | "signal";
+    workspaceDir: string;
+  }>;
   pathPrepend?: string[];
   safeBins?: string[];
   strictInlineEval?: boolean;

@@ -190,11 +190,14 @@ export function createWorkerCredentialBroker(options: WorkerCredentialBrokerOpti
       return;
     }
     pendingCredentials.delete(record.environmentId);
-    const minted = mintCredentialLocked({
-      environmentId: record.environmentId,
-      ownerEpoch: record.ownerEpoch,
-      sessionId,
-    });
+    const minted = mintCredentialLocked(
+      {
+        environmentId: record.environmentId,
+        ownerEpoch: record.ownerEpoch,
+        sessionId,
+      },
+      turnClaim,
+    );
     stageCredential(minted.grant);
     if (sessionId && credential?.ownerEpoch === record.ownerEpoch) {
       options.liveEvents?.rotateCredential({
@@ -269,6 +272,10 @@ export function createWorkerCredentialBroker(options: WorkerCredentialBrokerOpti
         }
         throw error;
       }
+      // The ready-state pending grant belongs to the old credential. Remove it before
+      // publishing the attached-session grant; reconciliation may inspect the attached
+      // record immediately after this synchronous transition.
+      pendingCredentials.delete(request.environmentId);
       if (options.liveEvents) {
         let liveSessionBound: boolean;
         try {
@@ -287,14 +294,19 @@ export function createWorkerCredentialBroker(options: WorkerCredentialBrokerOpti
           throw serviceError("invalid_state", "Attached session target is unavailable");
         }
       }
-      pendingCredentials.delete(request.environmentId);
-      await tunnels?.stop(request.environmentId, current.ownerEpoch);
-      return stageCredential(
+      const grant = stageCredential(
         grantFrom({
           credential: material.credential,
           record: store.getCredential(request.environmentId),
         }),
       );
+      try {
+        await tunnels?.stop(request.environmentId, current.ownerEpoch);
+      } catch (error) {
+        pendingCredentials.delete(request.environmentId);
+        throw error;
+      }
+      return grant;
     });
   };
 
@@ -358,11 +370,11 @@ export function createWorkerCredentialBroker(options: WorkerCredentialBrokerOpti
       if (!placementStore || !validateTurnClaim(claim)) {
         throw serviceError("invalid_state", "Worker turn credential claim is not authoritative");
       }
+      const environment = store.get(binding.environmentId);
       const pending = readPendingCredential(binding, claim)?.grant;
       if (pending) {
         return pending;
       }
-      const environment = store.get(binding.environmentId);
       if (
         !environment ||
         environment.state !== "attached" ||

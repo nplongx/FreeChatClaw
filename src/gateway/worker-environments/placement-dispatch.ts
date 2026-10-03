@@ -67,7 +67,12 @@ type WorkerPlacementDispatchOptions = WorkerPlacementReclaimBarriers &
   > & {
     environments: WorkerDispatchEnvironmentService &
       Pick<WorkerEnvironmentService, "recordError" | "requestDestroy"> &
-      Partial<Pick<WorkerEnvironmentService, "requiresNodeEnrollment">>;
+      Partial<
+        Pick<
+          WorkerEnvironmentService,
+          "getCloudWorkerBootstrapCapability" | "requiresNodeEnrollment"
+        >
+      >;
     isShuttingDown?: () => boolean;
     runnerAvailability: WorkerPlacementRunnerAvailabilityReader;
     runLocalBarrier: WorkerLocalDispatchBarrier;
@@ -208,8 +213,38 @@ export function createWorkerPlacementDispatchService(options: WorkerPlacementDis
       assertCurrent();
       const idempotencyKey =
         request.idempotencyKey ?? `session-dispatch:${request.sessionId}:${placement.generation}`;
+      const boundEnvironment = request.placementBinding
+        ? environments.get(request.placementBinding.environmentId)
+        : undefined;
+      if (request.placementBinding) {
+        if (!boundEnvironment) {
+          throw new Error("M12 placement binding references an unknown environment");
+        }
+        const admission = environments.getCloudWorkerBootstrapCapability?.(
+          request.placementBinding.environmentId,
+        );
+        if (
+          !admission ||
+          admission.leaseId !== request.placementBinding.leaseId ||
+          admission.ownerEpoch !== request.placementBinding.ownerEpoch ||
+          (admission.expiresAtMs !== undefined && admission.expiresAtMs <= Date.now())
+        ) {
+          throw new Error("M12 placement binding admission lease is stale or mismatched");
+        }
+        if (boundEnvironment.nodeDeviceId !== request.placementBinding.nodeDeviceId) {
+          throw new Error("M12 placement binding node identity is mismatched");
+        }
+        if (boundEnvironment.ownerEpoch !== request.placementBinding.ownerEpoch) {
+          throw new Error("M12 placement binding environment epoch is stale or mismatched");
+        }
+        if (request.deviceId !== request.placementBinding.nodeDeviceId) {
+          throw new Error("M12 placement binding request node identity is mismatched");
+        }
+        await startup.requireNodePlacementEligibility(request, boundEnvironment);
+      }
       // Select the reserve before assigning a cold environment identity.
       const expectedEnvironmentId =
+        request.placementBinding?.environmentId ??
         prepared?.environment.environmentId ??
         deriveEnvironmentIntent(idempotencyKey).environmentId;
       placement =
@@ -219,38 +254,49 @@ export function createWorkerPlacementDispatchService(options: WorkerPlacementDis
           from: "requested",
           to: "provisioning",
           expectedGeneration: placement.generation,
-          patch: { environmentId: expectedEnvironmentId },
+          patch: {
+            environmentId: expectedEnvironmentId,
+            ...(request.placementBinding
+              ? {
+                  ownerEpoch: request.placementBinding.ownerEpoch,
+                  leaseId: request.placementBinding.leaseId,
+                  nodeDeviceId: request.placementBinding.nodeDeviceId,
+                }
+              : {}),
+          },
         });
       reportPlacementTransition(onTransition, placement);
       const environment = prepared
         ? prepared.environment
-        : request.inheritedProfile
-          ? await environments.createFromProfileSnapshot(
-              {
-                profileId: request.profileId,
-                providerId: request.inheritedProfile.providerId,
-                profileSnapshot: request.inheritedProfile.profileSnapshot,
-              },
-              idempotencyKey,
-              request.machineClass,
-              request.executionMode,
-              projectPath,
-              signal,
-              request.os,
-              request.runSetupScript,
-              preparedIntent,
-            )
-          : await environments.create(
-              request.profileId,
-              idempotencyKey,
-              request.machineClass,
-              request.executionMode,
-              projectPath,
-              signal,
-              request.os,
-              request.runSetupScript,
-              preparedIntent,
-            );
+        : boundEnvironment
+          ? boundEnvironment
+          : request.inheritedProfile
+            ? await environments.createFromProfileSnapshot(
+                {
+                  profileId: request.profileId,
+                  providerId: request.inheritedProfile.providerId,
+                  profileSnapshot: request.inheritedProfile.profileSnapshot,
+                },
+                idempotencyKey,
+                request.machineClass,
+                request.executionMode,
+                projectPath,
+                signal,
+                request.os,
+                request.runSetupScript,
+                preparedIntent,
+              )
+            : await environments.create(
+                request.profileId,
+                idempotencyKey,
+                request.machineClass,
+                request.executionMode,
+                projectPath,
+                signal,
+                request.os,
+                request.runSetupScript,
+                preparedIntent,
+              );
       return await startup.continueProvisionedDispatch({
         request,
         placement,

@@ -20,6 +20,7 @@ export async function prepareWorkerDesktopLaunchPlan(params: {
   prepareComputer(): Promise<PreparedWorkerComputer | undefined> | undefined;
   modelRef: { provider: string; model: string };
   turn: SessionPlacementTurnParams;
+  nodeId?: string;
   portalAvailable?: boolean;
 }): Promise<{
   browser?: WorkerBrowserLaunchDescriptor;
@@ -51,6 +52,7 @@ export async function prepareWorkerDesktopLaunchPlan(params: {
   const toolAuthority = resolveWorkerToolAuthority({
     modelRef: params.modelRef,
     turn: params.turn,
+    nodeId: params.nodeId,
     portalAvailable: params.portalAvailable,
     availableOptionalToolNames,
   });

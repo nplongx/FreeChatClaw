@@ -149,6 +149,7 @@ export async function finishGatewayStartup(params: {
     gatewayInstanceRuntime,
     getPluginMetadataSnapshot,
     getPluginNodeCapabilities,
+    reclaimCloudWorkerNode,
   } = runtime;
   const startupPluginRuntimeClaim = kernel.pluginRuntimeGeneration.currentClaim();
   const databaseStartupAdmission = getAgentDatabaseStartupAdmission();
@@ -188,6 +189,7 @@ export async function finishGatewayStartup(params: {
       broadcast,
       refreshHealthSnapshot: gatewayRequestContext.refreshHealthSnapshot,
       buildRequestContext: () => gatewayRequestContext,
+      onNodeDisconnected: reclaimCloudWorkerNode,
     }),
   );
   await startupTrace.measure("http.listen", () => startListening());

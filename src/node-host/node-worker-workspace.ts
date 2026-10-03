@@ -109,7 +109,8 @@ export class NodeWorkerWorkspaceRuntime {
     const configuredRoot = path.resolve(
       options.root ?? path.join(resolveStateDir(env), "node-host"),
     );
-    fs.mkdirSync(configuredRoot, { recursive: true });
+    fs.mkdirSync(configuredRoot, { recursive: true, mode: 0o700 });
+    fs.chmodSync(configuredRoot, 0o700);
     this.root = fs.realpathSync.native(configuredRoot);
     // Git artifacts are machine caches, outside the per-lease state scrub boundary.
     const home = env.HOME ?? env.USERPROFILE ?? os.homedir();

@@ -6,6 +6,7 @@ import { createDeferred } from "../../../test/helpers/promise.js";
 import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
 import { runNodeWorkerWorkspaceTransfer } from "../../node-host/node-worker-transfer-client.js";
 import { NodeWorkerWorkspaceRuntime } from "../../node-host/node-worker-workspace.js";
+import { getPluginRuntimeGatewayRequestScope } from "../../plugins/runtime/gateway-request-scope.js";
 import { runCommandWithTimeout } from "../../process/exec.js";
 import { loadWorkspaceSkills } from "../../skills/loading/workspace-skill-loader.js";
 import { buildSkillSnapshot } from "../../skills/loading/workspace-skill-prompt.js";
@@ -42,6 +43,74 @@ vi.mock("../../node-host/node-worker-transfer-client.js", async (importOriginal)
 describe("concurrent worker workspace results", () => {
   beforeEach(setupWorkerTurnLauncherTest);
   afterEach(cleanupWorkerTurnLauncherTest);
+
+  it("binds native exec to the admitted remote workspace tunnel", async () => {
+    const remote = path.join(await fs.realpath(root), "remote-native-exec");
+    await fs.mkdir(remote);
+    seedActivePlacement("remote-exec", remote);
+    const placement = placements.get(SESSION_ID);
+    if (placement?.state !== "active") throw new Error("expected active placement");
+    const inputTurn = turn("native-exec");
+    const turnClaim = placements.claimTurn({
+      ...sessionTarget,
+      owner: { kind: "local", environmentId: ENVIRONMENT_ID, ownerEpoch: OWNER_EPOCH },
+      claimId: "native-exec",
+      runId: inputTurn.runId,
+    });
+    const runWorkspaceCommand = vi.fn(async (command) => ({
+      code: 0,
+      stdout:
+        command.input && JSON.parse(command.input).op === "discover" ? "" : command.argv.join(" "),
+      stderr: "",
+      signal: null,
+      killed: false,
+      termination: "exit" as const,
+      workspaceDir: remote,
+    }));
+    const tunnel: WorkerTunnelHandle = {
+      environmentId: ENVIRONMENT_ID,
+      ownerEpoch: OWNER_EPOCH,
+      runWorkspaceCommand,
+      quiesceWorkspace: async () => ({ assertActive: async () => {}, resume: async () => {} }),
+      reconcileWorkspace: async (request) => {
+        request.source.journal.commit(MANIFEST_REF);
+        return {
+          manifestRef: MANIFEST_REF,
+          changed: false,
+          verifyStable: async () => {},
+          verifyLocalStable: async () => {},
+        };
+      },
+      syncWorkspace: vi.fn(),
+      stop: async () => {},
+    };
+    await executeRemoteExecTurn({
+      environments: { get: attachedEnvironment, startTunnel: async () => tunnel },
+      onHandoff: () => {},
+      placement,
+      placements,
+      workspaceOperations: createWorkerWorkspaceOperationCoordinator(),
+      turn: inputTurn,
+      turnClaim,
+      workspace: { kind: "local", path: root },
+      runLocal: async () => {
+        const exec = getPluginRuntimeGatewayRequestScope()?.workerWorkspaceExec;
+        expect(exec).toBeDefined();
+        await expect(
+          exec!({
+            runId: inputTurn.runId,
+            agentId: placement.agentId,
+            nodeId: attachedEnvironment().nodeDeviceId!,
+            argv: ["/bin/echo", "native-proof"],
+          }),
+        ).resolves.toMatchObject({ stdout: "/bin/echo native-proof" });
+        return { meta: { durationMs: 1 } };
+      },
+    });
+    expect(runWorkspaceCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ argv: ["/bin/echo", "native-proof"], transportRetry: "never" }),
+    );
+  });
 
   it("reports cleanup failure and reclaims the inputs before the next turn without skills", async () => {
     const remote = path.join(await fs.realpath(root), "remote");

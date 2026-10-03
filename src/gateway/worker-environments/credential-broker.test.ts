@@ -4,6 +4,7 @@ import {
   openOpenClawStateDatabase,
 } from "../../state/openclaw-state-db.js";
 import { STALE_WORKER_BUILD_REASON } from "./admission.js";
+import { createWorkerCredentialBroker } from "./credential-broker.js";
 import * as support from "./service.test-support.js";
 import { createWorkerEnvironmentStore } from "./store.js";
 import type { WorkerTunnelManager } from "./tunnel.js";
@@ -237,6 +238,61 @@ describe("worker environment service", () => {
     expect(deliveredRestart.takeMintedCredential(binding)).toBeUndefined();
     expect(support.testState.store.getCredential(environmentId)?.credentialHash).toBe(
       deliveredHash,
+    );
+  });
+
+  it("keeps the attach grant pending while tunnel stop is in flight", async () => {
+    const environmentId = "worker-attach-reconcile-race";
+    support.seedReady(environmentId);
+    let releaseStop!: () => void;
+    const stop = vi.fn(
+      async () =>
+        await new Promise<void>((resolve) => {
+          releaseStop = resolve;
+        }),
+    );
+    const tunnelManager = { stop } as unknown as WorkerTunnelManager;
+    const liveEvents = support.createLiveEvents();
+    let credentialSequence = 0;
+    const broker = createWorkerCredentialBroker({
+      store: support.testState.store,
+      prepareInstallation: async () => support.BUNDLE_ARTIFACT,
+      tunnelManager,
+      workerCredentialTtlMs: 10_000,
+      generateWorkerCredential: () =>
+        [support.CREDENTIAL, "race", String(++credentialSequence)].join("-"),
+      liveEvents,
+      now: () => support.testState.nowMs,
+      isStopping: () => false,
+      cancelInferenceEnvironment: vi.fn(),
+      inState: (record, ...states) => states.includes(record.state),
+      move: (record, to, patch) =>
+        support.testState.store.transition({
+          environmentId: record.environmentId,
+          from: record.state,
+          to,
+          patch,
+        }),
+      serviceError: (_code, message) => new Error(message),
+      withLock: async (_environmentId, task) => await task(),
+    });
+
+    const attaching = broker.attachSession({
+      environmentId,
+      ownerEpoch: 1,
+      sessionId: "session-race",
+    });
+    await vi.waitFor(() => expect(stop).toHaveBeenCalledWith(environmentId, 1));
+
+    const attached = support.testState.store.get(environmentId)!;
+    broker.ensurePendingCredential(attached, "session-race");
+    expect(liveEvents.rotateCredential).not.toHaveBeenCalled();
+
+    releaseStop();
+    const grant = await attaching;
+    expect(grant.sessionId).toBe("session-race");
+    expect(support.testState.store.getCredential(environmentId)?.credentialHash).toBe(
+      grant.deliveryId,
     );
   });
 });

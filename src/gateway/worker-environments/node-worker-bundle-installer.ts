@@ -37,7 +37,9 @@ export function createGatewayNodeWorkerBundleInstaller(options: {
     const isAuthorized = () => {
       params.assertCurrent?.();
       return (
-        !params.signal?.aborted && options.getTransport() === transport && transport.isCurrent(node)
+        !params.signal?.aborted &&
+        options.getTransport() === transport &&
+        (transport.hasCurrentRunner(node.nodeId) || transport.isCurrent(node))
       );
     };
     if (!isAuthorized()) {

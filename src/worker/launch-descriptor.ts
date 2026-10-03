@@ -228,6 +228,7 @@ const AssignmentSchema = workerProtocolObject({
     .custom<SkillResourceDelivery>((value) => Value.Check(SkillResourceDeliverySchema, value))
     .optional(),
   agentId: Identifier,
+  nodeId: Identifier.optional(),
   operationalRunInstance: z.object({ instanceId: Identifier, runId: Identifier }).readonly(),
   // The worker carries this opaque host-signed envelope without parsing private identity.
   agentRuntimeIdentityToken: z.string().min(1).max(16_384),

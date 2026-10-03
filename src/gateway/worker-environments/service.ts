@@ -25,6 +25,7 @@ import type {
   WorkerEnvironmentAbandonment,
   WorkerProviderLifecycleInputOptions,
 } from "./provider-lifecycle.types.js";
+import { deriveEnvironmentIntent } from "./service-contract.js";
 import type { WorkerEnvironmentState } from "./state.js";
 import type {
   WorkerEnvironmentRecord,
@@ -92,11 +93,14 @@ type WorkerEnvironmentServiceOptions = WorkerProviderLifecycleInputOptions & {
   inferenceStore?: WorkerInferenceStore;
   placementStore?: WorkerSessionPlacementGate;
   executeSessionTool?: Parameters<typeof createWorkerTurnRpc>[0]["executeSessionTool"];
+  executeWorkspace?: Parameters<typeof createWorkerTurnRpc>[0]["executeWorkspace"];
   getCloudWorkerBootstrapCapability?: (environmentId: string) =>
     | {
         setupCode: string;
         nodeSetupId: string;
         ownerEpoch: number;
+        leaseId?: string;
+        expiresAtMs?: number;
         target: string;
       }
     | undefined;
@@ -342,6 +346,57 @@ export function createWorkerEnvironmentService(options: WorkerEnvironmentService
     isStopping: () => stopping,
     now,
     withLock,
+    executeWorkspace: async ({ identity, request, signal }) => {
+      const environment = store.get(identity.environmentId);
+      const claim = identity.turnClaim;
+      if (
+        !environment ||
+        !claim ||
+        request.runId !== claim.runId ||
+        environment.state !== "attached" ||
+        environment.ownerEpoch !== identity.ownerEpoch ||
+        environment.attachedSessionIds.length !== 1 ||
+        environment.attachedSessionIds[0] !== identity.sessionId ||
+        environment.nodeDeviceId !== request.nodeId ||
+        !options.placementStore?.isWorkerTurnToolAuthorized(claim, "exec")
+      ) {
+        throw new Error("worker workspace exec lost its placement authority");
+      }
+      if (environment.sharedHost !== false || !environment.leaseId) {
+        throw new Error("worker workspace exec requires a dedicated environment");
+      }
+      const tunnel = await environmentAccess.startTunnel({
+        environmentId: identity.environmentId,
+        ownerEpoch: identity.ownerEpoch,
+      });
+      const result = await tunnel.runWorkspaceCommand({
+        argv: request.argv,
+        transportRetry: "never",
+        ...(request.input === undefined ? {} : { input: request.input }),
+        ...(request.timeoutMs === undefined ? {} : { timeoutMs: request.timeoutMs }),
+        ...(signal ? { signal } : {}),
+        assertCurrent: () => {
+          const current = store.get(identity.environmentId);
+          if (
+            !options.placementStore?.validateWorkerTurn(claim) ||
+            current?.state !== "attached" ||
+            current.ownerEpoch !== identity.ownerEpoch ||
+            current.nodeDeviceId !== request.nodeId
+          ) {
+            throw new Error("worker workspace exec lost its placement authority");
+          }
+        },
+      });
+      return {
+        stdout: result.stdout,
+        stderr: result.stderr,
+        code: result.code,
+        signal: result.signal,
+        killed: result.killed,
+        termination: result.termination,
+        workspaceDir: environment.remoteWorkspaceDir,
+      };
+    },
   });
 
   const reconcileEnvironmentCore = async (
@@ -592,30 +647,65 @@ export function createWorkerEnvironmentService(options: WorkerEnvironmentService
       throw serviceError("invalid_profile", "Cloud worker admission requires node enrollment");
     }
     requireProviderExecutionMode(providerId, input.executionMode);
-    const result = await providerLifecycle.createWithProfile(
-      input.profileId,
-      input.idempotencyKey,
-      { executionMode: input.executionMode, signal: input.signal },
+    const { environmentId } = deriveEnvironmentIntent(input.idempotencyKey);
+    const provisioning = trackOperation(
+      providerLifecycle.createWithProfile(input.profileId, input.idempotencyKey, {
+        executionMode: input.executionMode,
+        signal: input.signal,
+      }),
     );
-    const capability = options.getCloudWorkerBootstrapCapability?.(result.environmentId);
-    if (!capability) {
-      throw serviceError("bootstrap_failure", "Cloud worker bootstrap capability was not retained");
-    }
-    if (
-      capability.nodeSetupId !== result.nodeSetupId ||
-      capability.ownerEpoch !== result.ownerEpoch
-    ) {
-      throw serviceError("invalid_state", "Cloud worker bootstrap capability binding changed");
+    let settled = false;
+    let provisioningError: unknown;
+    void provisioning.then(
+      () => {
+        settled = true;
+      },
+      (error) => {
+        settled = true;
+        provisioningError = error;
+      },
+    );
+    const deadline = Math.min(input.expiresAtMs, now() + 5 * 60_000);
+    let capability:
+      | {
+          setupCode: string;
+          nodeSetupId: string;
+          ownerEpoch: number;
+          target: string;
+        }
+      | undefined;
+    while (true) {
+      input.signal?.throwIfAborted();
+      capability = options.getCloudWorkerBootstrapCapability?.(environmentId);
+      if (capability) {
+        break;
+      }
+      if (settled) {
+        if (provisioningError) {
+          throw provisioningError;
+        }
+        throw serviceError(
+          "bootstrap_failure",
+          "Cloud worker provisioning completed before bootstrap capability was retained",
+        );
+      }
+      if (now() >= deadline) {
+        throw serviceError(
+          "bootstrap_failure",
+          "Cloud worker bootstrap capability was not retained",
+        );
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 50));
     }
     options.bindCloudWorkerBootstrapCapability?.({
-      environmentId: result.environmentId,
+      environmentId,
       leaseId: input.leaseId,
       expiresAtMs: input.expiresAtMs,
     });
     return {
-      environmentId: result.environmentId,
+      environmentId,
       nodeSetupId: capability.nodeSetupId,
-      ownerEpoch: capability.ownerEpoch,
+      ownerEpoch: Math.max(1, capability.ownerEpoch),
       leaseId: input.leaseId,
       expiresAtMs: input.expiresAtMs,
       bootstrap: { target: capability.target, credential: capability.setupCode },
@@ -638,6 +728,7 @@ export function createWorkerEnvironmentService(options: WorkerEnvironmentService
 
   const service = {
     admitCloudWorker,
+    getCloudWorkerBootstrapCapability: options.getCloudWorkerBootstrapCapability,
     prepare: (request: { profileId: string; projectPath: string }, authorize?: () => void) =>
       trackOperation(prepareBuild(request, authorize)),
     isStopping: () => stopping,
@@ -759,6 +850,7 @@ export function createWorkerEnvironmentService(options: WorkerEnvironmentService
     pushLiveEvent: turnRpc.pushLiveEvent,
     executeSessionTool: turnRpc.executeSessionTool,
     executeComputer: turnRpc.executeComputer,
+    executeWorkspace: turnRpc.executeWorkspace,
     prepareComputer: options.prepareComputer,
     startInference: turnRpc.startInference,
     cancelInference: turnRpc.cancelInference,

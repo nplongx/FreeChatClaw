@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 /** CLI runner for node-host stdin/stdout command dispatch. */
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import type { CloudflareAccessCredentials } from "../../packages/gateway-client/src/cloudflare-access.js";
@@ -60,6 +61,78 @@ type NodeHostRunOptions = {
   commands?: string[];
   allCommands?: boolean;
 };
+
+async function runM12SpecialistRequest(
+  client: { request: (method: string, params: unknown) => Promise<unknown> },
+  finish: (exitCode: number) => Promise<void>,
+): Promise<void> {
+  const requestFile = process.env.OPENCLAW_M12_SPECIALIST_REQUEST_FILE?.trim();
+  const resultFile = process.env.OPENCLAW_M12_SPECIALIST_RESULT_FILE?.trim();
+  if (!requestFile || !resultFile) {
+    return;
+  }
+  try {
+    const request = JSON.parse(await fs.readFile(requestFile, "utf8"));
+    let result: unknown;
+    let lastError: unknown;
+    const { waitTimeoutMs, ...startRequest } = request as Record<string, unknown>;
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      try {
+        // Phase 3 deliberately separates dispatch from completion.  Holding the
+        // start RPC open until the model turn finishes lets a slow Web-backed
+        // provider outlive the request/connection retry window and can cause the
+        // ephemeral node tunnel to be torn down while the native worker is still
+        // running.  `m12.specialist.wait` owns the bounded completion wait.
+        result = await client.request("m12.specialist.start", startRequest);
+        lastError = undefined;
+        break;
+      } catch (error) {
+        lastError = error;
+        if (
+          !String(error).includes(
+            "M12 specialist environment did not become ready with the admitted node binding",
+          ) &&
+          !String(error).includes("gateway request timeout for m12.specialist.start")
+        ) {
+          throw error;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    }
+    if (lastError !== undefined) {
+      throw lastError;
+    }
+    if (
+      waitTimeoutMs !== undefined &&
+      typeof result === "object" &&
+      result !== null &&
+      typeof (result as Record<string, unknown>).runId === "string"
+    ) {
+      const run = result as Record<string, unknown>;
+      const waitRequest = {
+        environmentId: run.environmentId,
+        leaseId: run.leaseId,
+        ownerEpoch: run.ownerEpoch,
+        taskId: run.taskId,
+        attempt: run.attempt,
+        runId: run.runId,
+        timeoutMs: waitTimeoutMs,
+      };
+      result = await client.request("m12.specialist.wait", waitRequest, {
+        timeoutMs: waitTimeoutMs + 10_000,
+      });
+    }
+    await fs.writeFile(resultFile, JSON.stringify(result, null, 2) + "\n", { mode: 0o600 });
+    await finish(0);
+  } catch (error) {
+    await fs
+      .writeFile(resultFile, JSON.stringify({ ok: false, error: String(error) }, null, 2) + "\n", {
+        mode: 0o600,
+      })
+      .catch(() => undefined);
+    await finish(1);
+  }
+}
 
 function writeStderrLine(message: string): void {
   process.stderr.write(`${message}\n`);
@@ -322,6 +395,10 @@ export async function runNodeHost(opts: NodeHostRunOptions): Promise<void> {
         void finish(0);
         return;
       }
+      const specialistOnly = Boolean(
+        process.env.OPENCLAW_M12_SPECIALIST_REQUEST_FILE &&
+        process.env.OPENCLAW_M12_SPECIALIST_RESULT_FILE,
+      );
       activeRuntime.connect({
         url,
         protocol: hello.protocol,
@@ -329,6 +406,13 @@ export async function runNodeHost(opts: NodeHostRunOptions): Promise<void> {
         ...(tlsFingerprint ? { tlsFingerprint } : {}),
         ...(cloudflareAccess ? { cloudflareAccess } : {}),
       });
+      if (specialistOnly) {
+        writeStderrLine("m12 specialist request scheduled");
+        setTimeout(() => {
+          writeStderrLine("m12 specialist request dispatching");
+          void runM12SpecialistRequest(client, finish);
+        }, 1000);
+      }
     },
     onConnectError: (error) => {
       writeStderrLine(`node host gateway connect failed: ${error.message}`);

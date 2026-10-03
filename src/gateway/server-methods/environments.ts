@@ -324,6 +324,7 @@ export const environmentsHandlers: GatewayRequestHandlers = {
         errorShape(ErrorCodes.UNAVAILABLE, "runner admission failed", {
           details: {
             code: error && typeof error === "object" && "code" in error ? error.code : undefined,
+            message: error instanceof Error ? error.message : String(error),
           },
         }),
       );

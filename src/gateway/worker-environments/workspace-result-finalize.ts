@@ -422,6 +422,49 @@ export async function executeRemoteExecTurn(params: {
       {
         isWebchatConnect: () => false,
         ...getPluginRuntimeGatewayRequestScope(),
+        workerWorkspaceNodeId: environment.nodeDeviceId ?? undefined,
+        workerWorkspaceExec: async (request) => {
+          if (
+            request.runId !== params.turnClaim.runId ||
+            request.agentId !== params.placement.agentId ||
+            request.nodeId !== environment.nodeDeviceId
+          ) {
+            throw new Error("node execution placement authority is no longer current");
+          }
+          const currentPlacement = params.placements.get(params.placement.sessionId);
+          const currentEnvironment = params.environments.get(environment.environmentId);
+          if (
+            !executionActive ||
+            params.turn.abortSignal?.aborted ||
+            !params.placements.validateTurnClaim(params.turnClaim) ||
+            currentPlacement?.state !== "active" ||
+            currentPlacement.executionMode !== "remote-exec" ||
+            currentPlacement.generation !== params.turnClaim.placementGeneration ||
+            currentPlacement.environmentId !== params.placement.environmentId ||
+            currentPlacement.activeOwnerEpoch !== params.placement.activeOwnerEpoch ||
+            currentEnvironment?.state !== "attached" ||
+            currentEnvironment.ownerEpoch !== environment.ownerEpoch ||
+            currentEnvironment.leaseId !== environment.leaseId ||
+            currentEnvironment.nodeDeviceId !== environment.nodeDeviceId ||
+            currentEnvironment.attachedSessionIds.length !== 1 ||
+            currentEnvironment.attachedSessionIds[0] !== params.placement.sessionId
+          ) {
+            throw new Error("node execution placement authority is no longer current");
+          }
+          return await tunnel.runWorkspaceCommand({
+            argv: request.argv,
+            transportRetry: "never",
+            ...(request.input === undefined ? {} : { input: request.input }),
+            ...(request.timeoutMs === undefined ? {} : { timeoutMs: request.timeoutMs }),
+            ...(params.turn.abortSignal ? { signal: params.turn.abortSignal } : {}),
+            assertCurrent: () => {
+              params.assertRunCurrent?.();
+              if (!params.placements.validateTurnClaim(params.turnClaim)) {
+                throw new Error("Cloud worker exec lost its placement claim");
+              }
+            },
+          });
+        },
         assertNodeExecutionCurrent: (request) => {
           params.assertRunCurrent?.();
           const placement = params.placements.get(params.placement.sessionId);

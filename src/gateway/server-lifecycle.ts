@@ -102,6 +102,7 @@ export async function prepareGatewayLifecycle(params: {
     bindDeviceNodeControl,
     bindWorkerNodeDesktopControl,
     workerPlacementRuntime,
+    reclaimCloudWorkerNode,
     lifecycle,
   } = runtime;
   const restartRecoveryCandidates = new Map<string, RestartRecoveryCandidate>();
@@ -203,6 +204,7 @@ export async function prepareGatewayLifecycle(params: {
       removeRemoteNodeInfo(nodeId);
       nodeUnsubscribeAll(nodeId);
       clearNodeWakeState(nodeId);
+      void reclaimCloudWorkerNode?.(nodeId);
     },
     onError: (message, error) => log.warn(`${message}: ${String(error)}`),
   });

@@ -12,6 +12,9 @@ import {
   type WorkerPortalParams,
   type WorkerPortalResponseFrame,
   WorkerPortalResponseFrameSchema,
+  type WorkerWorkspaceExecParams,
+  type WorkerWorkspaceExecResponseFrame,
+  WorkerWorkspaceExecResponseFrameSchema,
   WORKER_PROTOCOL_MAX_PAYLOAD_BYTES,
   type WorkerSessionsSendParams,
   type WorkerSessionsSendResponseFrame,
@@ -86,6 +89,10 @@ const WORKER_REQUEST_SPECS = {
     method: "worker.portal",
     responseSchema: WorkerPortalResponseFrameSchema,
   },
+  "workspace-exec": {
+    method: "worker.workspace.exec",
+    responseSchema: WorkerWorkspaceExecResponseFrameSchema,
+  },
   computer: {
     method: "worker.computer",
     responseSchema: WorkerComputerResponseFrameSchema,
@@ -109,6 +116,7 @@ type WorkerRequestParams = {
   "sessions-spawn": WorkerSessionsSpawnParams;
   "sessions-send": WorkerSessionsSendParams;
   portal: WorkerPortalParams;
+  "workspace-exec": WorkerWorkspaceExecParams;
   computer: WorkerComputerParams;
   "inference-start": WorkerInferenceStartParams;
   "inference-cancel": WorkerInferenceCancelParams;
@@ -121,6 +129,7 @@ type WorkerResponseFrames = {
   "sessions-spawn": WorkerSessionsSpawnResponseFrame;
   "sessions-send": WorkerSessionsSendResponseFrame;
   portal: WorkerPortalResponseFrame;
+  "workspace-exec": WorkerWorkspaceExecResponseFrame;
   computer: WorkerComputerResponseFrame;
   "inference-start": WorkerInferenceStartResponseFrame;
   "inference-cancel": WorkerInferenceCancelResponseFrame;

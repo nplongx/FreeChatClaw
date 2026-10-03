@@ -283,6 +283,27 @@ export async function runWorkerDescriptor(
             name !== "portal" || hello.protocolFeatures.includes(WORKER_PORTAL_PROTOCOL_FEATURE),
         ),
         execAuthority: descriptor.assignment.toolAuthority.exec,
+        workerWorkspaceExec: (request) =>
+          connection
+            .requestWorkspaceExec({
+              runId: descriptor.assignment.runId,
+              nodeId:
+                descriptor.assignment.nodeId ??
+                (descriptor.assignment.toolAuthority.exec?.host === "node"
+                  ? (descriptor.assignment.toolAuthority.exec.node ?? "")
+                  : ""),
+              argv: request.argv,
+              ...(request.input === undefined ? {} : { input: request.input }),
+              ...(request.timeoutMs === undefined
+                ? {}
+                : { timeoutMs: Math.min(request.timeoutMs, 15 * 60_000) }),
+            })
+            .then((response) => {
+              if (!response.ok) {
+                throw new Error(response.error.message);
+              }
+              return response.payload;
+            }),
         ...(descriptor.assignment.browser ? { browser: descriptor.assignment.browser } : {}),
         ...(descriptor.assignment.computer
           ? {

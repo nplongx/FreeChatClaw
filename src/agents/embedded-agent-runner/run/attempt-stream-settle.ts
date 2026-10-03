@@ -28,6 +28,7 @@ import { isRunnerAbortError } from "../abort.js";
 import { isCacheTtlEligibleProvider, readLastCacheTtlTimestamp } from "../cache-ttl.js";
 import {
   applyExtraParamsToAgent,
+  createM12NativeExecCompatWrapper,
   resolveAgentTransportOverride,
   resolveExplicitSettingsTransport,
   resolvePreparedExtraParams,
@@ -536,6 +537,7 @@ export async function prepareEmbeddedAttemptTransport(input: {
     streamFn: session.agent.streamFn,
     ...input.providerPromptState,
   });
+  session.agent.streamFn = createM12NativeExecCompatWrapper(session.agent.streamFn);
   const providerTextTransforms = resolveProviderTextTransforms({
     provider: attempt.provider,
     config: attempt.config,

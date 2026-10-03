@@ -137,6 +137,7 @@ export async function prepareGatewayKernelState(params: {
         const workerModule = await loadWorkerEnvironmentStartupModule();
         return await workerModule.createGatewayWorkerEnvironmentRuntime({
           getPluginRegistry: () => pluginRuntime.registry,
+          pluginMetadataSnapshot: pluginBootstrap.pluginMetadataSnapshot,
           getPortalRuntime: () => pluginGatewayContext.current,
           resolveGatewayContext: resolvePluginGatewayContext,
           desktopSessionRegistry,
@@ -148,6 +149,7 @@ export async function prepareGatewayKernelState(params: {
     : {};
   const {
     workerEnvironmentService,
+    reclaimCloudWorkerNode,
     workerLiveEvents,
     nodeWorkerGatewayNamespace,
     nodeWorkerBundleRetention,
@@ -525,6 +527,7 @@ export async function prepareGatewayKernelState(params: {
     bootId,
     pluginRuntime,
     workerEnvironmentService,
+    reclaimCloudWorkerNode,
     workerLiveEvents,
     bindDeviceNodeControl: bindDeviceNodeRuntime,
     bindWorkerNodeDesktopControl,

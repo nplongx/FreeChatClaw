@@ -158,6 +158,29 @@ describe("device worker provider", () => {
     },
   );
 
+  it("reserves a fresh cloud-admission lease before node enrollment creates pairing", async () => {
+    const beginNodeEnrollment = vi.fn(async () => ({
+      mode: "connect" as const,
+      setupCode: "oc-pair://test",
+      setupId: "setup-test",
+    }));
+    const provider = deviceRuntime({
+      getPairedDevice: async () => null,
+      listCurrentNodes: async () => [],
+    }).provider;
+
+    await expect(
+      provider.provision({ device: DEVICE_ID }, "admission-operation", {
+        beginNodeEnrollment,
+      }),
+    ).resolves.toEqual({
+      leaseId: expect.stringMatching(/^device:[a-f0-9]{64}:[a-f0-9]{32}$/u),
+      node: { deviceId: DEVICE_ID },
+      sharedHost: true,
+    });
+    expect(beginNodeEnrollment).toHaveBeenCalledTimes(1);
+  });
+
   it("returns the exact update-and-reconnect recovery for an outdated connected node", async () => {
     const provider = deviceRuntime({
       getPairedDevice: async () => pairedDevice(),

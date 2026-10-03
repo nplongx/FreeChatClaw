@@ -75,6 +75,8 @@ const CORE_GATEWAY_HANDLER_MODULES = {
   "nodes-pending": () =>
     import("./nodes.pending-work.js").then((module) => module.nodePendingWorkHandlers),
   nodes: () => import("./nodes.js").then((module) => module.nodeHandlers),
+  "m12-specialist": () =>
+    import("./m12-specialist.js").then((module) => module.m12SpecialistHandlers),
   "plugin-host-hooks": () =>
     import("./plugin-host-hooks.js").then((module) => module.pluginHostHookHandlers),
   plugins: () => import("./plugins.js").then((module) => module.pluginsHandlers),

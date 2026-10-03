@@ -469,6 +469,7 @@ export const sessionDispatchHandlers: GatewayRequestHandlers = {
             executionMode,
             runSetupScript: client?.connect?.scopes?.includes(ADMIN_SCOPE) === true,
             ...dispatchTarget,
+            ...(params.placementBinding ? { placementBinding: params.placementBinding } : {}),
             ...(devicePlacement ? { devicePlacement } : {}),
           },
           (observed) => {

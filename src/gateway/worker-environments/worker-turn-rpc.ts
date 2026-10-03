@@ -13,6 +13,8 @@ import type {
   WorkerSessionsSendParams,
   WorkerSessionsSpawnParams,
   WorkerSessionToolResult,
+  WorkerWorkspaceExecParams,
+  WorkerWorkspaceExecResult,
   WorkerTranscriptCommitParams,
 } from "../../../packages/gateway-protocol/src/schema/worker-admission.js";
 import type {
@@ -147,6 +149,11 @@ type WorkerTurnRpcOptions = {
           signal?: AbortSignal;
         },
   ) => Promise<WorkerSessionToolResult>;
+  executeWorkspace?: (params: {
+    identity: WorkerConnectionIdentity;
+    request: WorkerWorkspaceExecParams;
+    signal?: AbortSignal;
+  }) => Promise<WorkerWorkspaceExecResult>;
   inference: ReturnType<typeof createWorkerInferenceManager>;
   isStopping: () => boolean;
   now: () => number;
@@ -418,7 +425,7 @@ export function createWorkerTurnRpc(options: WorkerTurnRpcOptions) {
 
   const validateTool = (
     identity: WorkerConnectionIdentity,
-    toolName: WorkerSessionToolName | "computer",
+    toolName: WorkerSessionToolName | "computer" | "exec",
   ) => {
     const requestAdmission = validateAttachedWorkerRequest(identity, identity.ownerEpoch, {
       kind: "session-tool",
@@ -439,6 +446,29 @@ export function createWorkerTurnRpc(options: WorkerTurnRpcOptions) {
     execute: options.executeComputer,
     validate: (identity) => validateTool(identity, "computer"),
   });
+
+  const executeWorkspace = async (
+    identity: WorkerConnectionIdentity,
+    request: WorkerWorkspaceExecParams,
+    signal?: AbortSignal,
+  ) => {
+    const admitted = validateTool(identity, "exec");
+    if (!admitted.ok) {
+      return admitted;
+    }
+    const claim = placementClaim(identity);
+    if (!claim || request.runId !== claim.runId || !options.executeWorkspace) {
+      return { ok: false as const, reason: "method-not-allowed" as const };
+    }
+    try {
+      return {
+        ok: true as const,
+        result: await options.executeWorkspace({ identity, request, signal }),
+      };
+    } catch {
+      return { ok: false as const, reason: "gateway-unavailable" as const };
+    }
+  };
 
   const executeSessionTool = async (
     identity: WorkerConnectionIdentity,
@@ -719,6 +749,7 @@ export function createWorkerTurnRpc(options: WorkerTurnRpcOptions) {
     pushLiveEvent,
     executeSessionTool,
     executeComputer,
+    executeWorkspace,
     startInference,
     cancelInference,
     cancelInferenceForSession: (params: { sessionId: string; runId?: string }): string[] =>

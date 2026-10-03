@@ -47,6 +47,7 @@ export type WorkerEnvironmentServiceRecord = {
   sharedHost: boolean | null;
   state: WorkerEnvironmentState;
   ownerEpoch: number;
+  destroyRequestedAtMs: number | null;
   createdAtMs: number;
   idleSinceAtMs: number | null;
   attachedSessionIds: readonly string[];
@@ -76,6 +77,16 @@ export type WorkerDesktopLaunchResult = {
 export type WorkerEnvironmentServiceContract = {
   list(): WorkerEnvironmentServiceRecord[];
   get(environmentId: string): WorkerEnvironmentServiceRecord | undefined;
+  getCloudWorkerBootstrapCapability?: (environmentId: string) =>
+    | {
+        setupCode: string;
+        nodeSetupId: string;
+        ownerEpoch: number;
+        leaseId?: string;
+        expiresAtMs?: number;
+        target: string;
+      }
+    | undefined;
   inventoryVersion(): number;
   readMachineShape(environmentId: string): SessionPlacementMachine | undefined;
   machineShapeVersion(): number;
@@ -86,6 +97,21 @@ export type WorkerEnvironmentServiceContract = {
     request: { profileId: string; projectPath: string },
     authorize?: () => void,
   ): Promise<{ environmentId: string; preparationKey: string; reused: boolean }>;
+  admitCloudWorker(input: {
+    profileId: string;
+    idempotencyKey: string;
+    executionMode?: WorkerPlacementExecutionMode;
+    expiresAtMs: number;
+    leaseId: string;
+    signal?: AbortSignal;
+  }): Promise<{
+    environmentId: string;
+    nodeSetupId: string;
+    ownerEpoch: number;
+    leaseId: string;
+    expiresAtMs: number;
+    bootstrap: { target: string; credential: string };
+  }>;
   create(
     profileId: string,
     idempotencyKey: string,
@@ -122,6 +148,12 @@ export type WorkerPlacementDispatchRequest = {
   devicePlacement?: DevicePlacementRequirement;
   idempotencyKey?: string;
   deviceId?: string;
+  placementBinding?: {
+    environmentId: string;
+    ownerEpoch: number;
+    leaseId: string;
+    nodeDeviceId: string;
+  };
   machineClass?: string;
   os?: string;
   inheritedProfile?: {

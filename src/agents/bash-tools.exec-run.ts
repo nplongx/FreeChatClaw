@@ -449,6 +449,8 @@ export function createExecTool(
         if (host === "node") {
           return executeNodeHostCommand({
             command: params.command,
+            runId: defaults?.runId,
+            workerWorkspaceExec: defaults?.workerWorkspaceExec,
             toolCallId,
             workdir,
             env,

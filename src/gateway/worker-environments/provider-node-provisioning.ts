@@ -219,6 +219,9 @@ export function createWorkerNodeProvisioning(options: WorkerNodeProvisioningOpti
       get installation() {
         return pendingInstallation ?? preparedInstallation;
       },
+      get hasBegun() {
+        return pending !== undefined;
+      },
       prepareRuntime: prepareNodeRuntime
         ? async () => {
             assertRuntimeCurrent();
@@ -266,6 +269,13 @@ export function createWorkerNodeProvisioning(options: WorkerNodeProvisioningOpti
         void prepareInstallation().catch(() => undefined);
         return prepared;
       },
+      waitForDeviceId: async () => {
+        assertCurrent();
+        if (!enrollment) {
+          throw new Error("Worker node enrollment has not begun");
+        }
+        return enrollment.waitForDeviceId();
+      },
       close,
     };
   };
@@ -275,6 +285,7 @@ export function createWorkerNodeProvisioning(options: WorkerNodeProvisioningOpti
     lease: NodeLease,
     provider: WorkerProvider,
     patch: { leaseId: string; sharedHost: boolean; desktop: WorkerLease["desktop"] | null },
+    enrollmentOperation?: ReturnType<typeof createEnrollmentOperation>,
     preparedInstallation?: WorkerInstallationArtifact | Promise<WorkerInstallationArtifact>,
     cancellation?: ReturnType<typeof createWorkerProvisionCancellation>,
     preparedWorkspace?: ReturnType<
@@ -282,11 +293,7 @@ export function createWorkerNodeProvisioning(options: WorkerNodeProvisioningOpti
     >,
     beforeProvision?: () => void,
   ): Promise<WorkerEnvironmentRecord> => {
-    const nodePatch = {
-      ...patch,
-      nodeDeviceId: lease.node.deviceId,
-      sshEndpoint: null,
-    };
+    let enrolledDeviceId = lease.node.deviceId;
     const preparation = readWorkerProjectPreparation(record.profileSnapshot.project);
     const enrollmentOwner = options.store.get(record.environmentId);
     const assertCurrent = () => {
@@ -310,13 +317,20 @@ export function createWorkerNodeProvisioning(options: WorkerNodeProvisioningOpti
         (preparation !== undefined &&
           (!enrollmentOwner?.nodeSetupId ||
             current.nodeSetupId !== enrollmentOwner.nodeSetupId ||
-            current.nodeDeviceId !== lease.node.deviceId)) ||
+            (enrollmentOperation === undefined
+              ? current.nodeDeviceId !== enrolledDeviceId
+              : current.nodeDeviceId === null))) ||
         options.store.get(record.environmentId)?.destroyRequestedAtMs !== null
       ) {
         throw new Error("Prepared worker provisioning owner is no longer current");
       }
     };
     let nodeBuild: WorkerAdmissionHandshake;
+    let nodePatch: WorkerEnvironmentTransitionPatch = {
+      ...patch,
+      nodeDeviceId: enrolledDeviceId,
+      sshEndpoint: null,
+    };
     try {
       assertCurrent();
       if (!options.ensureNodeWorkerBundle) {
@@ -324,11 +338,20 @@ export function createWorkerNodeProvisioning(options: WorkerNodeProvisioningOpti
       }
       const artifact = await prepareBundle(await preparedInstallation, cancellation?.signal);
       assertCurrent();
+      if (enrollmentOperation) {
+        enrolledDeviceId = await enrollmentOperation.waitForDeviceId();
+        assertCurrent();
+      }
+      nodePatch = {
+        ...patch,
+        nodeDeviceId: enrolledDeviceId,
+        sshEndpoint: null,
+      };
       if (preparation && artifact.tarballSha256 !== preparation.artifacts.workerArchiveSha256) {
         throw new Error("Worker bundle differs from its admitted preparation");
       }
       nodeBuild = await options.ensureNodeWorkerBundle({
-        deviceId: lease.node.deviceId,
+        deviceId: enrolledDeviceId,
         artifact,
         // Remote execution uses its harness runtime; unspecified mode retains worker prewarming.
         prewarm: record.profileSnapshot.executionMode !== "remote-exec",

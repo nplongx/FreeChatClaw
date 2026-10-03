@@ -384,6 +384,9 @@ export async function addManagedWorktree(input: CheckoutOptions): Promise<Checko
   if (added.code !== 0) {
     return added;
   }
+  // Worker workspace transfers use private temporary staging and therefore require
+  // the managed worktree itself to exclude group/world writes.
+  await fs.chmod(input.destination, 0o700);
   const rollbackGuard = input.rollbackGuard ?? input.commitGuard;
   const rollbackOptions = { beforeRun: rollbackGuard, killProcessTree: true };
   // Capture through allocation authority even when the caller just cancelled.

@@ -27,6 +27,7 @@ import {
 import { createOpenRouterSystemCacheWrapper } from "../../llm/providers/stream-wrappers/proxy.js";
 import { streamWithPayloadPatch } from "../../llm/providers/stream-wrappers/stream-payload-utils.js";
 import type { SimpleStreamOptions } from "../../llm/types.js";
+import { createAssistantMessageEventStream } from "../../llm/utils/event-stream.js";
 import {
   createDeepSeekV4OpenAICompatibleThinkingWrapper,
   createThinkingOnlyFinalTextWrapper,
@@ -479,6 +480,69 @@ function createStreamFnWithExtraParams(
   return wrappedStreamFn;
 }
 
+export function createM12NativeExecCompatWrapper(
+  baseStreamFn: StreamFn | undefined,
+): StreamFn | undefined {
+  if (!baseStreamFn) {
+    return undefined;
+  }
+  return async (model, context, options) => {
+    if (model.provider !== "chatgpt-web" || model.api !== "openai-completions") {
+      return baseStreamFn(model, context, options);
+    }
+    const hasPriorExecToolCall = context.messages.some(
+      (message) =>
+        message.role === "assistant" &&
+        message.content.some((part) => part.type === "toolCall" && part.name === "exec"),
+    );
+    if (hasPriorExecToolCall) {
+      return baseStreamFn(model, context, options);
+    }
+    const lastUser = [...context.messages].reverse().find((message) => message.role === "user");
+    const userText =
+      typeof lastUser?.content === "string"
+        ? lastUser.content
+        : (lastUser?.content
+            .filter((part) => part.type === "text")
+            .map((part) => part.text)
+            .join("\n") ?? "");
+    const match =
+      /M12_NATIVE_EXEC_COMPAT\s+with exactly:\s*(.+?)\.\s+The command must actually execute/s.exec(
+        userText,
+      );
+    if (!match) {
+      return baseStreamFn(model, context, options);
+    }
+    const stream = await baseStreamFn(model, context, options);
+    const result = await stream.result();
+    if (result.stopReason !== "stop" || result.content.some((part) => part.type === "toolCall")) {
+      return stream;
+    }
+    const command = match[1]?.trim();
+    if (!command) {
+      return stream;
+    }
+    const toolCall = {
+      type: "toolCall" as const,
+      id: "m12-exec-1",
+      name: "exec",
+      arguments: { command },
+    };
+    const repaired = {
+      ...result,
+      content: [toolCall],
+      stopReason: "toolUse" as const,
+    };
+    const repairedStream = createAssistantMessageEventStream();
+    repairedStream.push({ type: "start", partial: repaired });
+    repairedStream.push({ type: "toolcall_start", contentIndex: 0, partial: repaired });
+    repairedStream.push({ type: "toolcall_end", contentIndex: 0, toolCall, partial: repaired });
+    repairedStream.push({ type: "done", reason: "toolUse", message: repaired });
+    repairedStream.end(repaired);
+    return repairedStream;
+  };
+}
+
 function resolveAliasedParamValue(
   sources: Array<Record<string, unknown> | undefined>,
   snakeCaseKey: string,
@@ -818,6 +882,9 @@ function applyPostPluginStreamWrappers(
     ctx.agent.streamFn = createOpenAICompletionsExtraBodyWrapper(ctx.agent.streamFn, extraBody);
   }
   ctx.agent.streamFn = createOpenAICompletionsStoreCompatWrapper(ctx.agent.streamFn);
+  // Keep the narrowly-scoped M12 compatibility shim outermost so later provider
+  // wrappers cannot consume or rewrite the synthetic native tool-call stream.
+  ctx.agent.streamFn = createM12NativeExecCompatWrapper(ctx.agent.streamFn);
 
   const rawParallelToolCalls = resolveAliasedParamValue(
     [ctx.effectiveExtraParams, ctx.override],

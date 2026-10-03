@@ -19,6 +19,8 @@ import {
   formatExecAutoReviewAssessment,
   resolveExecAutoReviewDecision,
 } from "../infra/exec-auto-review.js";
+import { buildNodeShellCommand } from "../infra/node-shell.js";
+import { getPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
 import {
   buildExecAutoReviewDeniedToolResult,
   formatExecApprovalContinuationSourceOutput,
@@ -37,6 +39,7 @@ import {
   analyzeNodeApprovalRequirement,
   buildNodeSystemRunInvoke,
   dispatchNodeSystemRun,
+  formatNodeWorkspaceRunToolResult,
   prepareNodeSystemRun,
   resolveNodeExecutionTarget,
 } from "./bash-tools.exec-host-node-phases.js";
@@ -50,6 +53,7 @@ import * as execHostShared from "./bash-tools.exec-host-shared.js";
 import { createApprovalSlug } from "./bash-tools.exec-runtime.js";
 import type { ExecToolDetails } from "./bash-tools.exec-types.js";
 import { abortable } from "./embedded-agent-runner/run/abortable.js";
+import { resolveNodeExecTimeouts } from "./exec-tool-timeout.js";
 import type { AgentToolResult } from "./runtime/index.js";
 import { callGatewayTool } from "./tools/gateway.js";
 
@@ -62,8 +66,45 @@ const APPROVED_NODE_INVOKE_SCOPES = [WRITE_SCOPE, APPROVALS_SCOPE];
 export async function executeNodeHostCommand(
   params: ExecuteNodeHostCommandParams,
 ): Promise<AgentToolResult<ExecToolDetails>> {
-  const target = await resolveNodeExecutionTarget(params);
+  const workerScope = getPluginRuntimeGatewayRequestScope();
+  const workerWorkspaceExec = params.workerWorkspaceExec ?? workerScope?.workerWorkspaceExec;
   params.signal?.throwIfAborted();
+  if (workerWorkspaceExec) {
+    if (params.security === "deny") {
+      throw new Error("exec denied: host=node security=deny");
+    }
+    const { runTimeoutMs } = resolveNodeExecTimeouts(params.timeoutSec, params.defaultTimeoutSec);
+    const target = {
+      nodeId: params.boundNode ?? params.requestedNode ?? workerScope?.workerWorkspaceNodeId,
+      argv: buildNodeShellCommand(params.command, process.platform),
+      runTimeoutMs,
+    };
+    if (!target.nodeId) {
+      throw new Error("exec host=node worker transport requires an admitted node id");
+    }
+    const startedAt = Date.now();
+    const raw = await workerWorkspaceExec({
+      runId: params.runId ?? "",
+      agentId: params.agentId ?? "",
+      argv: target.argv,
+      ...(target.runTimeoutMs ? { timeoutMs: target.runTimeoutMs } : {}),
+    });
+    return formatNodeWorkspaceRunToolResult({
+      raw,
+      startedAt,
+      nodeId:
+        workerScope?.workerWorkspaceNodeId ??
+        params.boundNode ??
+        params.requestedNode ??
+        "admitted-node",
+      warnings: params.warnings,
+    });
+  }
+  const target = await resolveNodeExecutionTarget(
+    workerScope?.workerWorkspaceNodeId
+      ? { ...params, requestedNode: workerScope.workerWorkspaceNodeId }
+      : params,
+  );
   const { hostSecurity, hostAsk, askFallback } = params.bypassHostApprovalFloors
     ? { hostSecurity: params.security, hostAsk: params.ask, askFallback: "deny" as const }
     : await execHostShared.resolveExecHostApprovalContext({

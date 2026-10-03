@@ -181,7 +181,7 @@ describe("node worker provider provisioning", () => {
         expect(support.testState.store.getCredential(record.environmentId)).toBeUndefined();
         if (outcome === "ready") {
           finishProvider.resolve();
-          await support.waitForFast(() => expect(closeNodeEnrollment).toHaveBeenCalledOnce());
+          expect(closeNodeEnrollment).not.toHaveBeenCalled();
           expect(creationSettled).toBe(false);
           expect(ensureNodeWorkerBundle).not.toHaveBeenCalled();
           finishBundle.resolve();
@@ -191,6 +191,7 @@ describe("node worker provider provisioning", () => {
           expect(ensureNodeWorkerBundle).toHaveBeenCalledExactlyOnceWith(
             expect.objectContaining({ artifact: support.BUNDLE_ARTIFACT, deviceId }),
           );
+          expect(closeNodeEnrollment).toHaveBeenCalledOnce();
         } else if (outcome === "provider-timeout") {
           expect(await creation).toMatchObject({ error: { code: "provider_failure" } });
           await expect(begin!()).rejects.toThrow("Worker provisioning operation is closed");

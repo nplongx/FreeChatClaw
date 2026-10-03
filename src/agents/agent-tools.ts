@@ -318,6 +318,7 @@ export function createOpenClawCodingToolsInternal(
     permissionPolicy: sessionPermissionPolicy,
     scheduledExecTarget,
   });
+  const effectiveNodeCwd = options?.exec?.nodeCwd ?? options?.workspaceDir;
   const processToolAvailabilityRef: NonNullable<ExecToolDefaults["processToolAvailabilityRef"]> =
     {};
   const coreTools = createCoreCodingTools({
@@ -349,6 +350,7 @@ export function createOpenClawCodingToolsInternal(
       reviewTranscript: options?.exec?.reviewTranscript,
       trigger: options?.trigger,
       node: options?.exec?.node ?? execConfig.node,
+      nodeCwd: effectiveNodeCwd,
       pathPrepend: mergeGatewayAgentCliPath(options?.exec?.pathPrepend ?? execConfig.pathPrepend),
       safeBins: options?.exec?.safeBins ?? execConfig.safeBins,
       strictInlineEval: options?.exec?.strictInlineEval ?? execConfig.strictInlineEval,

@@ -140,12 +140,24 @@ export function createDeviceWorkerRuntime(options: DeviceWorkerRuntimeOptions) {
     id: DEVICE_WORKER_PROVIDER_ID,
     supportedExecutionModes: ["worker-turn", "remote-exec"],
     provisionBeforeInstallation: true,
+    requiresNodeEnrollment: true,
+    resolveProvisionTimeoutMs: () => 5 * 60_000,
     resolveAllocation: async (profile, operationId) => ({
       leaseId: deviceLeaseId(requireDeviceId(profile), operationId),
       sharedHost: true,
     }),
-    provision: async (profile, operationId) => {
+    provision: async (profile, operationId, options) => {
       const deviceId = requireDeviceId(profile);
+      // A fresh cloud admission has no paired device yet: enrollment itself creates
+      // that pairing after the provider has reserved the deterministic lease.
+      // Existing device placement still requires the normal paired/connected check.
+      if (options?.beginNodeEnrollment) {
+        await options.beginNodeEnrollment();
+        return {
+          ...(await provider.resolveAllocation(profile, operationId)),
+          node: { deviceId },
+        };
+      }
       const availability = await resolveAvailability(deviceId);
       if (!availability.available) {
         throw new WorkerProviderError(deviceUnavailableText(deviceId, availability));
@@ -155,8 +167,8 @@ export function createDeviceWorkerRuntime(options: DeviceWorkerRuntimeOptions) {
         node: { deviceId },
       };
     },
-    inspect: async ({ profile }) => {
-      const deviceId = requireDeviceId(profile);
+    inspect: async ({ profile, nodeDeviceId }) => {
+      const deviceId = nodeDeviceId ?? requireDeviceId(profile);
       const paired = await options.getPairedDevice(deviceId);
       if (!hasPairedNodeRole(paired)) {
         return { status: "unknown" };

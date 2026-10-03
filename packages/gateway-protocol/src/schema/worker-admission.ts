@@ -41,6 +41,7 @@ export const WORKER_PROTOCOL_METHODS = [
   "worker.sessions.send",
   "worker.portal",
   "worker.computer",
+  "worker.workspace.exec",
   "worker.skill-workshop",
 ] as const;
 export const WORKER_TRANSCRIPT_COMMIT_PROTOCOL_FEATURE = "worker-transcript-commit-v1";
@@ -50,6 +51,7 @@ export const WORKER_EXECUTION_CONTEXT_PROTOCOL_FEATURE = "worker-execution-conte
 export const WORKER_EXECUTION_AUTHORITY_PROTOCOL_FEATURE = "worker-execution-authority-v1";
 export const WORKER_SESSION_TOOLS_PROTOCOL_FEATURE = "worker-session-tools-v1";
 export const WORKER_PORTAL_PROTOCOL_FEATURE = "worker-portal-v1";
+export const WORKER_WORKSPACE_EXEC_PROTOCOL_FEATURE = "worker-workspace-exec-v1";
 export const WORKER_PROTOCOL_FEATURES = [
   "skill-resources-v1",
   "worker-skill-workshop-v1",
@@ -62,6 +64,7 @@ export const WORKER_PROTOCOL_FEATURES = [
   WORKER_EXECUTION_AUTHORITY_PROTOCOL_FEATURE,
   WORKER_SESSION_TOOLS_PROTOCOL_FEATURE,
   WORKER_PORTAL_PROTOCOL_FEATURE,
+  WORKER_WORKSPACE_EXEC_PROTOCOL_FEATURE,
   WORKER_COMPUTER_PROTOCOL_FEATURE,
   "worker-inference-v1",
 ] as const;
@@ -256,6 +259,42 @@ export const WorkerSessionToolResponseFrameSchema = Type.Union([
 export const WorkerSessionsSpawnResponseFrameSchema = WorkerSessionToolResponseFrameSchema;
 export const WorkerSessionsSendResponseFrameSchema = WorkerSessionToolResponseFrameSchema;
 export const WorkerPortalResponseFrameSchema = WorkerSessionToolResponseFrameSchema;
+
+export const WorkerWorkspaceExecParamsSchema = closedObject({
+  runId: WorkerIdentifierSchema,
+  nodeId: WorkerIdentifierSchema,
+  argv: Type.Array(Type.String({ minLength: 1, maxLength: 16 * 1024 }), {
+    minItems: 1,
+    maxItems: 128,
+  }),
+  input: Type.Optional(Type.String({ maxLength: WORKER_PROTOCOL_MAX_PAYLOAD_BYTES })),
+  timeoutMs: Type.Optional(Type.Integer({ minimum: 1, maximum: 15 * 60_000 })),
+});
+
+export const WorkerWorkspaceExecResultSchema = closedObject({
+  stdout: Type.String({ maxLength: WORKER_PROTOCOL_MAX_PAYLOAD_BYTES }),
+  stderr: Type.String({ maxLength: WORKER_PROTOCOL_MAX_PAYLOAD_BYTES }),
+  code: Type.Union([Type.Integer(), Type.Null()]),
+  signal: Type.Union([Type.String({ minLength: 1, maxLength: 32 }), Type.Null()]),
+  killed: Type.Boolean(),
+  termination: Type.Union([
+    Type.Literal("exit"),
+    Type.Literal("timeout"),
+    Type.Literal("no-output-timeout"),
+    Type.Literal("signal"),
+  ]),
+  workspaceDir: Type.String({ minLength: 1, maxLength: 4096 }),
+});
+
+export const WorkerWorkspaceExecResponseFrameSchema = Type.Union([
+  closedObject({
+    type: Type.Literal("res"),
+    id: WorkerFrameIdSchema,
+    ok: Type.Literal(true),
+    payload: WorkerWorkspaceExecResultSchema,
+  }),
+  WorkerErrorResponseFrameSchema,
+]);
 
 const WorkerTranscriptTextContentSchema = closedObject({
   type: Type.Literal("text"),
@@ -727,6 +766,11 @@ export type WorkerSessionsSpawnResponseFrame = Static<
 >;
 export type WorkerSessionsSendResponseFrame = Static<typeof WorkerSessionsSendResponseFrameSchema>;
 export type WorkerPortalResponseFrame = Static<typeof WorkerPortalResponseFrameSchema>;
+export type WorkerWorkspaceExecParams = Static<typeof WorkerWorkspaceExecParamsSchema>;
+export type WorkerWorkspaceExecResult = Static<typeof WorkerWorkspaceExecResultSchema>;
+export type WorkerWorkspaceExecResponseFrame = Static<
+  typeof WorkerWorkspaceExecResponseFrameSchema
+>;
 export type WorkerTranscriptMessage = Static<typeof WorkerTranscriptMessageSchema>;
 export type WorkerProviderReplayState = Static<typeof WorkerProviderReplayStateSchema>;
 export type WorkerTranscriptCommitParams = Static<typeof WorkerTranscriptCommitParamsSchema>;

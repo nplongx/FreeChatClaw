@@ -174,12 +174,14 @@ export function selectWorkerWorkspaceHashMemoEntries(
   maxEntries: number,
   maxBytes: number,
 ): Array<[string, string]> {
-  const compareIdentity = ([left]: [string, string], [right]: [string, string]) =>
-    left < right ? -1 : left > right ? 1 : 0;
   const candidates = [...memo]
     .filter(([identity]) => identity.startsWith("worker:"))
     .map((entry) => ({ entry, size: Number(entry[0].split(":")[3]) }))
-    .toSorted((left, right) => right.size - left.size || compareIdentity(left.entry, right.entry));
+    .toSorted(
+      (left, right) =>
+        right.size - left.size ||
+        (left.entry[0] < right.entry[0] ? -1 : left.entry[0] > right.entry[0] ? 1 : 0),
+    );
   const selected: Array<[string, string]> = [];
   let bytes = 2;
   for (const { entry } of candidates) {
@@ -192,7 +194,7 @@ export function selectWorkerWorkspaceHashMemoEntries(
       bytes += entryBytes;
     }
   }
-  return selected.toSorted(compareIdentity);
+  return selected.toSorted(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
 }
 
 export function serializeRemoteWorkspaceHashMemo(

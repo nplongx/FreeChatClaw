@@ -197,8 +197,15 @@ export function prepareEmbeddedAttemptClientTools(params: {
       );
     }
 
+    const sessionEffectiveTools = [
+      ...params.effectiveTools,
+      ...params.uncompactedEffectiveTools.filter(
+        (tool) =>
+          tool.name === "exec" && !params.effectiveTools.some((active) => active.name === "exec"),
+      ),
+    ];
     const { customTools } = splitSdkTools({
-      tools: params.effectiveTools,
+      tools: sessionEffectiveTools,
       sandboxEnabled: params.sandboxEnabled,
       toolHookContext: params.catalogToolHookContext,
       abortSignal: params.getToolAbortSignal?.(),

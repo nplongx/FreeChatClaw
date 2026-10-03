@@ -298,7 +298,11 @@ export function createWorkerNodeEnrollmentManager(options: WorkerNodeEnrollmentM
           const deadline = now() + NODE_ENROLLMENT_TIMEOUT_MS;
           while (now() < deadline) {
             enrollmentSignal.throwIfAborted();
-            const live = options.store.get(owner.environmentId);
+            // Pairing completion is persisted independently of the environment row.
+            // Reconcile it here before polling availability so a successful native
+            // bootstrap handoff becomes the environment's authoritative node binding.
+            options.store.ensureNodeEnrollment(owner.environmentId);
+            let live = options.store.get(owner.environmentId);
             if (
               !live ||
               live.destroyRequestedAtMs !== null ||
@@ -336,7 +340,7 @@ export function createWorkerNodeEnrollmentManager(options: WorkerNodeEnrollmentM
         },
       };
       enrollmentClosers.set(enrollment, binding.close);
-      options.onBootstrapCapability?.(record, enrollment);
+      options.onBootstrapCapability?.(owner, enrollment);
       return enrollment;
     } catch (error) {
       binding.close();

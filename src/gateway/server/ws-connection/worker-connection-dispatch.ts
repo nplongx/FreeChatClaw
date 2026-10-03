@@ -1,3 +1,4 @@
+import { Value } from "typebox/value";
 import {
   type WorkerComputerParams,
   type WorkerComputerResult,
@@ -14,6 +15,10 @@ import {
   type WorkerSessionsSendParams,
   type WorkerSessionsSpawnParams,
   type WorkerSessionToolResult,
+  type WorkerWorkspaceExecParams,
+  type WorkerWorkspaceExecResult,
+  WORKER_WORKSPACE_EXEC_PROTOCOL_FEATURE,
+  WorkerWorkspaceExecParamsSchema,
   type WorkerTranscriptCommitErrorReason,
   type WorkerTranscriptCommitErrorShape,
   type WorkerTranscriptCommitParams,
@@ -105,6 +110,16 @@ export type WorkerConnectionService = {
       | WorkerPortalParams,
     signal?: AbortSignal,
   ) => Promise<WorkerServiceResult<WorkerSessionToolResult, { reason: WorkerProtocolCloseReason }>>;
+  executeWorkspace?: (
+    identity: WorkerConnectionIdentity,
+    request: WorkerWorkspaceExecParams,
+    signal?: AbortSignal,
+  ) => Promise<
+    WorkerServiceResult<
+      WorkerWorkspaceExecResult,
+      { reason: WorkerProtocolCloseReason; message?: string }
+    >
+  >;
 };
 
 type WorkerInferenceConnectionService = WorkerConnectionService & {
@@ -280,6 +295,36 @@ export async function dispatchWorkerRequest(params: {
       return;
     }
     const outcome = await service.executeComputer(
+      params.identity,
+      params.request.params,
+      params.signal,
+    );
+    if (outcome.ok) {
+      params.respond(true, outcome.result);
+    } else if ("closeReason" in outcome) {
+      rejectWorkerRequest({ ...params, reason: outcome.closeReason });
+    } else {
+      params.respond(
+        false,
+        undefined,
+        workerProtocolError(outcome.reason, { message: outcome.message }),
+      );
+    }
+    return;
+  }
+  if (params.request.method === "worker.workspace.exec") {
+    if (
+      !params.identity.protocolFeatures.includes(WORKER_WORKSPACE_EXEC_PROTOCOL_FEATURE) ||
+      !service.executeWorkspace
+    ) {
+      rejectWorkerRequest({ ...params, reason: "method-not-allowed" });
+      return;
+    }
+    if (!Value.Check(WorkerWorkspaceExecParamsSchema, params.request.params)) {
+      rejectWorkerRequest({ ...params, reason: "invalid-frame" });
+      return;
+    }
+    const outcome = await service.executeWorkspace(
       params.identity,
       params.request.params,
       params.signal,

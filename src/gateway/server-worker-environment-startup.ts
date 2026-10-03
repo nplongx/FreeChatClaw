@@ -6,8 +6,8 @@ import { loadOrCreateProcessDeviceIdentity } from "../infra/device-identity.js";
 import { getPairedDevice } from "../infra/device-pairing.js";
 import { resolveOpenClawPackageRootSync } from "../infra/openclaw-root.js";
 import { decodePairingSetupCode } from "../pairing/setup-code.js";
-import type { WorkerNodeEnrollment } from "../plugins/capability-provider.types.js";
 import { getGatewayPluginMetadataSnapshot } from "../plugins/current-plugin-metadata-state.js";
+import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.types.js";
 import type { PluginRegistry } from "../plugins/registry-types.js";
 import type { WorkerExecutionMode, WorkerProfile } from "../plugins/types.js";
 import {
@@ -63,6 +63,7 @@ export type GatewayWorkerEnvironmentStartupState = {
 
 export type GatewayWorkerEnvironmentRuntime = {
   workerEnvironmentService?: WorkerEnvironmentService;
+  reclaimCloudWorkerNode?: (nodeId: string) => Promise<readonly string[]>;
   workerLiveEvents?: WorkerLiveEventReceiver;
   workerTunnelManager?: WorkerTunnelManager;
   nodeWorkerGatewayNamespace?: string;
@@ -122,6 +123,7 @@ export async function loadGatewayWorkerEnvironmentStartupState(): Promise<Gatewa
 
 export async function createGatewayWorkerEnvironmentRuntime(params: {
   getPluginRegistry: () => PluginRegistry;
+  pluginMetadataSnapshot?: PluginMetadataSnapshot;
   getPortalRuntime: () => Pick<GatewayRequestContext, "portalService" | "broadcast"> | undefined;
   resolveGatewayContext: GatewayContextResolver;
   desktopSessionRegistry: DesktopSessionRegistry;
@@ -311,7 +313,7 @@ export async function createGatewayWorkerEnvironmentRuntime(params: {
   const prepareNodeArtifact = async (profileSnapshot: WorkerProfile, signal?: AbortSignal) => {
     const mode = profileSnapshot.executionMode === "remote-exec" ? "remote-exec" : "worker-turn";
     let registry = params.getPluginRegistry();
-    let metadata = getGatewayPluginMetadataSnapshot();
+    let metadata = getGatewayPluginMetadataSnapshot() ?? params.pluginMetadataSnapshot;
     let generation = bootstrapProducers.get(mode);
     if (!generation || generation.registry !== registry || generation.metadata !== metadata) {
       const [{ createNodeBootstrapArtifactProvider }, { resolveNodeBootstrapPlugins }] =
@@ -321,7 +323,7 @@ export async function createGatewayWorkerEnvironmentRuntime(params: {
         ]);
       signal?.throwIfAborted();
       registry = params.getPluginRegistry();
-      metadata = getGatewayPluginMetadataSnapshot();
+      metadata = getGatewayPluginMetadataSnapshot() ?? metadata;
       generation = bootstrapProducers.get(mode);
       if (!generation || generation.registry !== registry || generation.metadata !== metadata) {
         const packageRoot = resolveOpenClawPackageRootSync({
@@ -330,19 +332,20 @@ export async function createGatewayWorkerEnvironmentRuntime(params: {
           cwd: process.cwd(),
         });
         const runningBuildId = resolveRuntimeServiceBuildId();
-        if (!metadata || !packageRoot || !runningBuildId) {
-          throw new Error(
-            "Cloud node bootstrap requires the running build and plugin inventory; build OpenClaw and restart the Gateway",
-          );
+        if (!packageRoot || !runningBuildId || (mode === "remote-exec" && !metadata)) {
+          throw new Error("Cloud node bootstrap diagnostic");
         }
         const producer = createNodeBootstrapArtifactProvider({
           packageRoot,
           runningBuildId,
-          plugins: resolveNodeBootstrapPlugins({
-            registry,
-            metadata,
-            executionMode: mode,
-          }),
+          plugins:
+            mode === "remote-exec"
+              ? resolveNodeBootstrapPlugins({
+                  registry,
+                  metadata: metadata!,
+                  executionMode: mode,
+                })
+              : [],
         });
         // Reload owns a new inventory; active enrollments pin their old artifact until closure.
         if (generation) {
@@ -380,7 +383,7 @@ export async function createGatewayWorkerEnvironmentRuntime(params: {
     string,
     {
       record: WorkerEnvironmentRecord;
-      enrollment: WorkerNodeEnrollment;
+      setupCode: string;
       target: string;
       leaseId?: string;
       expiresAtMs?: number;
@@ -398,9 +401,20 @@ export async function createGatewayWorkerEnvironmentRuntime(params: {
       if (!("setupCode" in enrollment) || enrollment.mode !== "connect") {
         return;
       }
-      const key = `${record.environmentId}:${record.nodeSetupId ?? ""}:${record.ownerEpoch}`;
+      const key = `${record.environmentId}:${record.nodeSetupId ?? ""}`;
       const payload = decodePairingSetupCode(enrollment.setupCode);
-      cloudWorkerCapabilities.set(key, { record, enrollment, target: payload.url });
+      const previous = cloudWorkerCapabilities.get(key);
+      cloudWorkerCapabilities.set(key, {
+        record,
+        setupCode: enrollment.setupCode,
+        target: payload.url,
+        ...(previous?.record.environmentId === record.environmentId && previous.leaseId
+          ? { leaseId: previous.leaseId }
+          : {}),
+        ...(previous?.record.environmentId === record.environmentId && previous.expiresAtMs
+          ? { expiresAtMs: previous.expiresAtMs }
+          : {}),
+      });
     },
   });
   let executeSessionTool: WorkerSessionToolExecutor = async () => {
@@ -449,12 +463,12 @@ export async function createGatewayWorkerEnvironmentRuntime(params: {
       if (!record || !record.nodeSetupId) {
         return undefined;
       }
-      const key = `${environmentId}:${record.nodeSetupId}:${record.ownerEpoch}`;
+      const key = `${environmentId}:${record.nodeSetupId}`;
       const capability = cloudWorkerCapabilities.get(key);
       if (
         !capability ||
         capability.record.nodeSetupId !== record.nodeSetupId ||
-        capability.record.ownerEpoch !== record.ownerEpoch
+        capability.record.environmentId !== record.environmentId
       ) {
         return undefined;
       }
@@ -469,37 +483,27 @@ export async function createGatewayWorkerEnvironmentRuntime(params: {
         cloudWorkerCapabilities.delete(key);
         return undefined;
       }
-      if (capability.leaseId !== undefined && capability.leaseId !== record.leaseId) {
-        cloudWorkerCapabilities.delete(key);
-        return undefined;
-      }
-      if (!("setupCode" in capability.enrollment) || capability.enrollment.mode !== "connect") {
-        return undefined;
-      }
       return {
-        setupCode: capability.enrollment.setupCode,
+        setupCode: capability.setupCode,
         nodeSetupId: record.nodeSetupId,
         ownerEpoch: record.ownerEpoch,
+        leaseId: capability.leaseId,
+        expiresAtMs: capability.expiresAtMs,
         target: capability.target,
       };
     },
     bindCloudWorkerBootstrapCapability: ({ environmentId, leaseId, expiresAtMs }) => {
       const record = params.startup.store.get(environmentId);
-      if (!record || !record.nodeSetupId || record.leaseId === null) {
+      if (!record || !record.nodeSetupId) {
         throw new Error("Cloud worker admission environment lease is unavailable");
       }
       if (record.destroyRequestedAtMs !== null) {
         throw new Error("Cloud worker admission environment is being destroyed");
       }
-      if (
-        !leaseId ||
-        leaseId !== record.leaseId ||
-        expiresAtMs <= Date.now() ||
-        expiresAtMs > record.expiresAtMs
-      ) {
+      if (!leaseId || expiresAtMs <= Date.now() || expiresAtMs > Date.now() + 15 * 60_000) {
         throw new Error("Cloud worker admission lease binding is invalid");
       }
-      const key = `${environmentId}:${record.nodeSetupId}:${record.ownerEpoch}`;
+      const key = `${environmentId}:${record.nodeSetupId}`;
       const capability = cloudWorkerCapabilities.get(key);
       if (!capability) {
         throw new Error("Cloud worker admission capability is no longer current");
@@ -641,6 +645,29 @@ export async function createGatewayWorkerEnvironmentRuntime(params: {
     );
     return environmentIds;
   });
+  const reclaimCloudWorkerNode = async (nodeId: string): Promise<readonly string[]> => {
+    const environmentIds = params.startup.store
+      .listForReconcile()
+      .filter(
+        (record) =>
+          record.providerId === DEVICE_WORKER_PROVIDER_ID &&
+          record.nodeSetupId !== null &&
+          record.nodeDeviceId === nodeId &&
+          record.destroyRequestedAtMs === null &&
+          !["destroyed", "failed", "orphaned"].includes(record.state),
+      )
+      .map((record) => record.environmentId);
+    await Promise.all(
+      [...environmentIds].map(async (environmentId) => {
+        await workerEnvironmentService.requestDestroy(environmentId).catch((error) => {
+          workerEnvironmentLog.warn(
+            `Cloud worker node reclaim failed (${nodeId}, ${environmentId}): ${String(error)}`,
+          );
+        });
+      }),
+    );
+    return [...environmentIds];
+  };
   let workerSessionToolExecutor: Promise<WorkerSessionToolExecutor> | undefined;
   executeSessionTool = async (request) => {
     const executor = await (workerSessionToolExecutor ??=
@@ -669,6 +696,7 @@ export async function createGatewayWorkerEnvironmentRuntime(params: {
       : undefined;
   return {
     workerEnvironmentService,
+    reclaimCloudWorkerNode,
     workerLiveEvents,
     workerTunnelManager,
     nodeWorkerGatewayNamespace,

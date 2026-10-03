@@ -59,7 +59,9 @@ describe("worker environment service", () => {
 
     await support.createService(provider).reconcileOnce();
 
-    expect(inspected).toEqual([{ leaseId: "lease:worker-crash", profile: { region: "test" } }]);
+    expect(inspected).toEqual([
+      { leaseId: "lease:worker-crash", profile: { region: "test" }, nodeDeviceId: null },
+    ]);
     expect(support.testState.store.get("worker-crash")).toMatchObject({
       state: "ready",
       bootstrapReceipt: support.BOOTSTRAP_RECEIPT,
@@ -120,7 +122,11 @@ describe("worker environment service", () => {
       await workerService.reconcileOnce();
 
       expect(environment.profileSnapshot).not.toHaveProperty("executionMode");
-      expect(inspect).toHaveBeenCalledWith({ leaseId: lease.leaseId, profile: { region: "test" } });
+      expect(inspect).toHaveBeenCalledWith({
+        leaseId: lease.leaseId,
+        profile: { region: "test" },
+        nodeDeviceId: environment.nodeDeviceId,
+      });
       expect(destroy).not.toHaveBeenCalled();
       expect(support.testState.store.get(environment.environmentId)).toMatchObject({
         state: "ready",
@@ -236,7 +242,11 @@ describe("worker environment service", () => {
       );
       await restarted.reconcileOnce();
 
-      expect(inspect).toHaveBeenCalledWith({ leaseId, profile: { region: "test" } });
+      expect(inspect).toHaveBeenCalledWith({
+        leaseId,
+        profile: { region: "test" },
+        nodeDeviceId: environment.nodeDeviceId,
+      });
       expect(destroy).not.toHaveBeenCalled();
       expect(support.testState.store.get(environment.environmentId)).toMatchObject({
         state: "ready",

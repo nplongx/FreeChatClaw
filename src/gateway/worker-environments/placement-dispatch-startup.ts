@@ -720,6 +720,7 @@ export function createWorkerPlacementDispatchStartup(options: {
   return {
     bindPreparedPlacement,
     validateDevicePlacement,
+    requireNodePlacementEligibility,
     continueProvisionedDispatch,
     retainInterruptedProvisioning,
     resumeProvisioning,

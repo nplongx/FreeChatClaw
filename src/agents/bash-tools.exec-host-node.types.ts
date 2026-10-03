@@ -5,7 +5,7 @@
  */
 import type { ExecAsk, ExecSecurity } from "../infra/exec-approvals.js";
 import type { ExecAutoReviewer } from "../infra/exec-auto-review.js";
-import type { ExecElevatedDefaults } from "./bash-tools.exec-types.js";
+import type { ExecElevatedDefaults, ExecToolDefaults } from "./bash-tools.exec-types.js";
 
 /** Full parameter bundle for Node-hosted exec command execution. */
 export type ExecuteNodeHostCommandParams = {
@@ -17,9 +17,7 @@ export type ExecuteNodeHostCommandParams = {
   requestedNode?: string;
   boundNode?: string;
   sessionKey?: string;
-  /** Session UUID active when the approval was requested; pins the followup. */
   sessionId?: string;
-  /** Session-store template, so the direct/denied followup can detect a rebind. */
   sessionStore?: string;
   bashElevated?: ExecElevatedDefaults;
   approvalReviewerDeviceId?: string;
@@ -43,10 +41,11 @@ export type ExecuteNodeHostCommandParams = {
   defaultTimeoutSec: number;
   approvalRunningNoticeMs: number;
   warnings: string[];
-  /** Warnings that apply only when the command runs inline, never while approval is pending. */
   foregroundWarnings?: string[];
   processContinuationAvailable?: boolean;
   notifySessionKey?: string;
   notifyOnExit?: boolean;
   trustedSafeBinDirs?: ReadonlySet<string>;
+  runId?: string;
+  workerWorkspaceExec?: ExecToolDefaults["workerWorkspaceExec"];
 };

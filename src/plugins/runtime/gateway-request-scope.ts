@@ -54,6 +54,24 @@ type PluginRuntimeGatewayRequestScope = {
       workspace: OpenClawPluginNodeWorkspace;
     }) => void;
   };
+  /** Placement-bound native exec transport for a remote-exec worker turn. */
+  workerWorkspaceExec?: (request: {
+    runId: string;
+    agentId: string;
+    nodeId: string;
+    argv: string[];
+    input?: string;
+    timeoutMs?: number;
+  }) => Promise<{
+    stdout: string;
+    stderr: string;
+    code: number | null;
+    signal: NodeJS.Signals | null;
+    killed: boolean;
+    termination: "exit" | "timeout" | "no-output-timeout" | "signal";
+    workspaceDir: string;
+  }>;
+  workerWorkspaceNodeId?: string;
   context?: GatewayRequestContext;
   resolveGatewayContext?: GatewayContextResolver;
   client?: GatewayRequestOptions["client"];

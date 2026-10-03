@@ -426,7 +426,8 @@ export class ManagedWorktreeService {
   private async worktreesRoot(): Promise<string> {
     const root =
       this.getConfig?.().worktreeRoot ?? path.join(resolveStateDir(this.env), "worktrees");
-    await fs.mkdir(root, { recursive: true });
+    await fs.mkdir(root, { recursive: true, mode: 0o700 });
+    await fs.chmod(root, 0o700);
     // Git canonicalizes paths in `git worktree list`; minting below the real root keeps
     // lock-state and adoption comparisons aligned when the state path traverses symlinks.
     return await fs.realpath(root);
@@ -683,7 +684,8 @@ export class ManagedWorktreeService {
         : undefined;
       params.signal?.throwIfAborted();
       params.commitGuard?.();
-      await fs.mkdir(root, { recursive: true });
+      await fs.mkdir(root, { recursive: true, mode: 0o700 });
+      await fs.chmod(root, 0o700);
       return await addManagedWorktree({
         env: this.env,
         now: this.now,

@@ -107,6 +107,13 @@ type RunWorkerEmbeddedTurnParams = {
   allowedToolNames: readonly WorkerToolName[];
   permissionMode?: import("../../packages/gateway-protocol/src/schema/sessions-row.js").SessionPermissionMode;
   execAuthority: WorkerToolAuthority["exec"];
+  workerWorkspaceExec?: (request: {
+    argv: string[];
+    input?: string;
+    timeoutMs?: number;
+  }) => Promise<
+    import("../../packages/gateway-protocol/src/schema/worker-admission.js").WorkerWorkspaceExecResult
+  >;
   browser?: WorkerBrowserLaunchDescriptor;
   browserRuntime?: WorkerBrowserRuntime;
   computer?: Omit<Parameters<typeof createWorkerComputerTool>[0], "runId" | "registerRunCleanup">;
@@ -200,7 +207,7 @@ async function runWorkerEmbeddedTurnWithResources(
   const execUnavailable =
     params.execAuthority === undefined ||
     params.execAuthority.host === "sandbox" ||
-    params.execAuthority.host === "node";
+    (params.execAuthority.host === "node" && !params.workerWorkspaceExec);
   const allowedToolNameSet = new Set<string>(params.allowedToolNames);
   if (execUnavailable) {
     allowedToolNameSet.delete("exec");
@@ -277,6 +284,7 @@ async function runWorkerEmbeddedTurnWithResources(
       runId: params.runId,
       notifySessionKey: params.sessionKey,
       sessionId: params.sessionId,
+      ...(params.workerWorkspaceExec ? { workerWorkspaceExec: params.workerWorkspaceExec } : {}),
       eventRouting: { preserveSessionKey: false },
     },
     processDefaults: { scopeKey: params.sessionKey },

@@ -160,9 +160,10 @@ export function createWorkerProviderLifecycle(options: WorkerProviderLifecycleOp
     beforeProvision?: () => void,
   ) => {
     let record = initialRecord;
-    let lease: WorkerLease;
+    let lease: WorkerLease | undefined;
     let attemptOpen = true;
     let preparationComplete = false;
+    let retainEnrollmentForNodeFinish = false;
     let executionMode: WorkerExecutionMode | undefined;
     let enrollmentOperation: ReturnType<typeof nodeProvisioning.createEnrollmentOperation>;
     let projectOperation: Awaited<ReturnType<typeof prepareWorkerProviderProject>> | undefined;
@@ -327,9 +328,17 @@ export function createWorkerProviderLifecycle(options: WorkerProviderLifecycleOp
       throw serviceError("provider_failure", `Worker provider operation failed: ${detail}`);
     } finally {
       // A replay keeps its durable owner after timeout; this invocation must still close.
+      // Node enrollment remains live through nodeProvisioning.finish(), which waits for the
+      // admitted runner to redeem the bootstrap setup and bind its real device identity.
       attemptOpen = false;
+      retainEnrollmentForNodeFinish = Boolean(lease?.node && enrollmentOperation?.hasBegun);
       projectOperation?.close();
-      enrollmentOperation?.close();
+      if (!retainEnrollmentForNodeFinish) {
+        enrollmentOperation?.close();
+      }
+    }
+    if (!lease) {
+      throw new Error("Worker provider provisioning completed without a lease");
     }
     // A timeout can happen after allocation; retain the same operation id for safe replay.
     const patch = {
@@ -337,7 +346,17 @@ export function createWorkerProviderLifecycle(options: WorkerProviderLifecycleOp
       sharedHost: lease.sharedHost === true,
       desktop: lease.desktop ?? null,
       ...(lease.node
-        ? { nodeDeviceId: lease.node.deviceId, sshEndpoint: null }
+        ? {
+            // A fresh node enrollment has no durable device identity yet. The
+            // provider lease's configured device is allocation metadata, not the
+            // identity redeemed by the bootstrap setup. Preserve an existing
+            // node identity only for replay/resume of that exact environment.
+            nodeDeviceId:
+              record.nodeDeviceId === null && enrollmentOperation?.hasBegun
+                ? null
+                : lease.node.deviceId,
+            sshEndpoint: null,
+          }
         : { nodeDeviceId: null, sshEndpoint: lease.ssh }),
     };
     if (cancellation?.signal.aborted) {
@@ -360,16 +379,21 @@ export function createWorkerProviderLifecycle(options: WorkerProviderLifecycleOp
       );
     }
     if (lease.node) {
-      return await nodeProvisioning.finish(
-        record,
-        lease,
-        provider,
-        patch,
-        enrollmentOperation?.installation ?? preparedInstallation,
-        cancellation,
-        projectOperation?.getPreparedWorkspace(),
-        beforeProvision,
-      );
+      try {
+        return await nodeProvisioning.finish(
+          record,
+          lease,
+          provider,
+          patch,
+          enrollmentOperation?.hasBegun ? enrollmentOperation : undefined,
+          enrollmentOperation?.installation ?? preparedInstallation,
+          cancellation,
+          projectOperation?.getPreparedWorkspace(),
+          beforeProvision,
+        );
+      } finally {
+        enrollmentOperation?.close();
+      }
     }
     const bootstrapping = move(record, "bootstrapping", patch);
     let installation = preparedInstallation;
@@ -504,7 +528,10 @@ export function createWorkerProviderLifecycle(options: WorkerProviderLifecycleOp
       return;
     }
     const inspection = await callProvider(record.environmentId, () =>
-      provider.inspect(lifecycleLease(record, leaseId)),
+      provider.inspect({
+        ...lifecycleLease(record, leaseId),
+        nodeDeviceId: record.nodeDeviceId,
+      }),
     )
       .then(requireWorkerLeaseStatus)
       .catch((error: unknown) => {

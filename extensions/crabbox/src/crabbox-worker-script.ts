@@ -7,7 +7,17 @@ export function wrapCrabboxNodeScript(
   delimiter = "CRABBOX_NODE_SCRIPT",
 ): string {
   if (target !== "windows/normal") {
-    return `set -eu\nnode <<'${delimiter}'\n${script}\n${delimiter}`;
+    return `set -eu
+NODE="$(command -v node || true)"
+if [ -z "$NODE" ]; then
+  for candidate in "$HOME/.local/openclaw-node/bin/node" /usr/local/bin/node /usr/bin/node; do
+    if [ -x "$candidate" ]; then NODE="$candidate"; break; fi
+  done
+fi
+if [ -z "$NODE" ]; then echo 'Cloud worker requires Node.js on PATH or $HOME/.local/openclaw-node/bin/node' >&2; exit 127; fi
+"$NODE" <<'${delimiter}'
+${script}
+${delimiter}`;
   }
   return `$ErrorActionPreference = 'Stop'
 $node = Get-Command node -CommandType Application -ErrorAction SilentlyContinue

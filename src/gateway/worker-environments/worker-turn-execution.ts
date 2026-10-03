@@ -171,6 +171,7 @@ export async function executeWorkerTurn(
       prepareComputer: () => params.environments.prepareComputer?.(params.turnClaim),
       modelRef,
       turn,
+      nodeId: environment.nodeDeviceId ?? undefined,
       portalAvailable,
     });
   params.placements.authorizeWorkerTurnTools(params.turnClaim, toolAuthority.allowedToolNames);
@@ -346,6 +347,7 @@ export async function executeWorkerTurn(
           },
           assignment: {
             agentId: placement.agentId,
+            nodeId: environment.nodeDeviceId ?? undefined,
             operationalRunInstance,
             agentRuntimeIdentityToken,
             runId: turn.runId,

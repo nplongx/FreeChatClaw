@@ -90,6 +90,7 @@ export type GatewayConnectionOptions = {
     },
   ) => void;
   buildRequestContext: () => GatewayRequestContext;
+  onNodeDisconnected?: (nodeId: string) => void | Promise<unknown>;
 };
 
 type GatewayConnectionLifecycle = Pick<
@@ -490,6 +491,7 @@ export function attachGatewayConnection(params: AttachGatewayConnectionParams) {
         removeRemoteNodeInfo(currentDisconnectedNodeId);
         context.nodeUnsubscribeAll(currentDisconnectedNodeId);
         clearNodeWakeState(currentDisconnectedNodeId);
+        void params.onNodeDisconnected?.(currentDisconnectedNodeId);
       }
       if (disconnectedNodeHistory && currentDisconnectedNodeId === disconnectedNodeHistory.nodeId) {
         try {

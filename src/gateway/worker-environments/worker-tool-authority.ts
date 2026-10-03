@@ -85,6 +85,7 @@ function resolveWorkerCapabilityProfile(params: {
 export function resolveWorkerToolAuthority(params: {
   modelRef: { provider: string; model: string };
   turn: SessionPlacementTurnParams;
+  nodeId?: string;
   availableOptionalToolNames?: readonly WorkerOptionalLocalToolName[];
   portalAvailable?: boolean;
 }): WorkerToolAuthority {
@@ -106,7 +107,7 @@ export function resolveWorkerToolAuthority(params: {
     (turn.scheduledToolPolicy?.execTarget !== undefined && defaults.effectiveHost !== "gateway");
   const { effectiveHost: host, security, node: configuredNode } = defaults;
   const ask = policy.ask ?? defaults.ask;
-  const node = configuredNode?.trim();
+  const node = (params.nodeId ?? configuredNode)?.trim();
   // Executable paths, safe-bin profiles, and command approvals are host-specific.
   // Until a portable allowlist exists, transmit an explicit empty safe-bin cap.
   const exec: NonNullable<WorkerToolAuthority["exec"]> =

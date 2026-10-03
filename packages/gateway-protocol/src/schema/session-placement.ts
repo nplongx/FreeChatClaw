@@ -241,6 +241,14 @@ export const SessionsDispatchParamsSchema = Type.Object(
     agentId: Type.Optional(NonEmptyString),
     profileId: Type.Optional(NonEmptyString),
     deviceId: Type.Optional(NonEmptyString),
+    placementBinding: Type.Optional(
+      closedObject({
+        environmentId: WorkerIdentifierSchema,
+        ownerEpoch: SessionPlacementOwnerEpochSchema,
+        leaseId: NonEmptyString,
+        nodeDeviceId: WorkerIdentifierSchema,
+      }),
+    ),
     autoDevice: Type.Optional(Type.Literal(true)),
     machineClass: Type.Optional(WorkerMachineClassSchema),
     os: Type.Optional(WorkerOperatingSystemIdSchema),

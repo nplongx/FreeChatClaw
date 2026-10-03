@@ -249,6 +249,47 @@ function formatNodeRunToolResult(params: {
   };
 }
 
+/** Formats the native remote-exec worker tunnel result as an exec tool result. */
+export function formatNodeWorkspaceRunToolResult(params: {
+  raw: {
+    stdout: string;
+    stderr: string;
+    code: number | null;
+    signal: string | null;
+    killed: boolean;
+    termination: string;
+    workspaceDir: string;
+  };
+  startedAt: number;
+  nodeId: string;
+  warnings?: string[];
+}): AgentToolResult<ExecToolDetails> {
+  const success = params.raw.termination === "exit" && params.raw.code === 0;
+  const output = [params.raw.stdout, params.raw.stderr].filter(Boolean).join("\n");
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Node: ${params.nodeId}\n${renderExecUpdateText({
+          tailText: output,
+          warnings: params.warnings ?? [],
+        })}`,
+      },
+    ],
+    details: {
+      status: success ? "completed" : "failed",
+      exitCode: params.raw.code,
+      durationMs: Date.now() - params.startedAt,
+      aggregated: output,
+      nodeId: params.nodeId,
+      cwd: params.raw.workspaceDir,
+      ...(params.raw.signal ? { exitSignal: params.raw.signal } : {}),
+      ...(params.raw.termination === "timeout" ? { timedOut: true } : {}),
+      ...(params.raw.termination === "no-output-timeout" ? { noOutputTimedOut: true } : {}),
+    } satisfies ExecToolDetails,
+  };
+}
+
 /** Resolves the node id, platform, argv, env, and timeout for a node-host exec. */
 export async function resolveNodeExecutionTarget(
   params: ExecuteNodeHostCommandParams,

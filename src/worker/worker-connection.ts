@@ -15,6 +15,8 @@ import type {
   WorkerSessionsSpawnResponseFrame,
   WorkerTranscriptCommitParams,
   WorkerTranscriptCommitResponseFrame,
+  WorkerWorkspaceExecParams,
+  WorkerWorkspaceExecResponseFrame,
 } from "../../packages/gateway-protocol/src/schema/worker-admission.js";
 import type {
   WorkerComputerParams,
@@ -235,6 +237,12 @@ export class WorkerConnection {
     // Desktop input is not a durable session operation. A lost response cannot
     // automatically replay clicks or typing on a reconnected transport.
     return this.frames.request("computer", params, undefined, params.timeoutMs);
+  }
+
+  requestWorkspaceExec(
+    params: WorkerWorkspaceExecParams,
+  ): Promise<WorkerWorkspaceExecResponseFrame> {
+    return this.frames.request("workspace-exec", params, undefined, params.timeoutMs);
   }
 
   private async requestDurableSessionOperation<T>(request: () => Promise<T>): Promise<T> {

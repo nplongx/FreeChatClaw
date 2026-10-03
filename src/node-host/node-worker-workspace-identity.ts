@@ -223,7 +223,8 @@ export function resolveNodeManagedWorkspaceIdentity(
 
 export function ensureContainedDirectory(parent: string, name: string): string {
   const candidate = path.join(parent, name);
-  fs.mkdirSync(candidate, { recursive: true });
+  fs.mkdirSync(candidate, { recursive: true, mode: 0o700 });
+  fs.chmodSync(candidate, 0o700);
   const stats = fs.lstatSync(candidate);
   const resolved = fs.realpathSync.native(candidate);
   if (stats.isSymbolicLink() || !stats.isDirectory() || !isPathInside(parent, resolved)) {
