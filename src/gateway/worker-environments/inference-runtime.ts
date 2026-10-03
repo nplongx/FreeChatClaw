@@ -119,6 +119,47 @@ const ERROR_MESSAGES = {
   string
 >;
 
+export type M12ProviderBoundaryParams = {
+  provider: string;
+  modelId: string;
+  api: string;
+  baseUrl?: string;
+  credentialSource: "gateway";
+};
+
+/**
+ * Fail-closed policy for the Phase 4 ChatGPT Web provider boundary.
+ * Secret resolution remains in the Gateway auth/model preparation path.
+ */
+export function assertM12ProviderBoundary(params: M12ProviderBoundaryParams): void {
+  if (
+    params.provider !== "chatgpt-web" ||
+    params.modelId !== "chatgpt-free" ||
+    params.api !== "openai-completions" ||
+    params.credentialSource !== "gateway"
+  ) {
+    throw new Error("M12 provider boundary rejected provider/model/auth tuple");
+  }
+  if (!params.baseUrl) {
+    throw new Error("M12 provider boundary requires an isolated /v1 base URL");
+  }
+  let url: URL;
+  try {
+    url = new URL(params.baseUrl);
+  } catch {
+    throw new Error("M12 provider boundary requires a valid isolated /v1 base URL");
+  }
+  if (
+    url.protocol !== "http:" ||
+    url.hostname !== "127.0.0.1" ||
+    url.pathname.replace(/\/+$/u, "") !== "/v1" ||
+    url.port === "8318" ||
+    url.port === "9010"
+  ) {
+    throw new Error("M12 provider boundary rejected non-isolated provider endpoint");
+  }
+}
+
 function inferenceError(
   reason: Extract<WorkerInferenceTerminalOutcome, { type: "error" }>["reason"],
   usage?: Usage,
@@ -560,6 +601,15 @@ export function createWorkerInferenceExecutor(
         workspaceDir: approved.workspaceDir,
       });
       const authValue = prepared.auth.apiKey;
+      if (approved.provider === "chatgpt-web") {
+        assertM12ProviderBoundary({
+          provider: approved.provider,
+          modelId: approved.model,
+          api: providerModel.api,
+          baseUrl: providerModel.baseUrl,
+          credentialSource: "gateway",
+        });
+      }
       const streamAgent = dependencies.resolveStream({
         llmRuntime,
         currentStreamFn: llmRuntime.streamSimple,
