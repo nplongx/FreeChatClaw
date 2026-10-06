@@ -1,37 +1,46 @@
-## OpenClaw Vision
+## FreeChatClaw Vision
 
-OpenClaw is the AI that actually does things.
-It runs on your devices, in your channels, with your rules.
+FreeChatClaw is a maintained fork of OpenClaw focused on AI systems that actually do
+things through native sessions, explicit worker placement, and controlled
+provider execution.
 
-This document explains the current state and direction of the project.
-We are still early, so iteration is fast.
+It runs on your devices, in your channels, with explicit Gateway ownership and
+runtime boundaries.
+
+This document explains the FreeChatClaw direction. OpenClaw remains the inherited
+foundation; FreeChatClaw-specific architecture is documented in
+[`docs/architecture.md`](docs/architecture.md).
 Project overview and developer docs: [`README.md`](README.md)
 Contribution guide: [`CONTRIBUTING.md`](CONTRIBUTING.md)
 
-OpenClaw started as a personal playground to learn AI and build something genuinely useful:
-an assistant that can run real tasks on a real computer.
-It evolved through several names and shells: Warelay -> Clawdbot -> Moltbot -> OpenClaw.
+The FreeChatClaw fork starts from the OpenClaw Gateway, protocol, plugin, node, and
+agent-runtime foundations and adds a native worker execution architecture.
+The fork intentionally keeps compatibility with inherited OpenClaw surfaces
+while the technical package and CLI compatibility layer remains in place.
 
-The goal: a personal assistant that is easy to use, supports a wide range of platforms, and respects privacy and security.
+The goal: a reliable native execution system that is easy to operate, supports
+the inherited OpenClaw platforms, and makes ownership, placement, authentication,
+and evidence boundaries explicit.
 
-OpenClaw is a great personal assistant and a great team assistant.
-A personal install is yours alone; a shared Gateway is a place people work together, so the same session can carry several humans, their credit, and their history.
-We build OpenClaw with OpenClaw on [team.openclaw.ai](https://team.openclaw.ai), and we sometimes invite visitors there.
+FreeChatClaw preserves the distinction between the trusted Gateway control plane and
+worker execution surfaces. A worker can execute admitted work without becoming
+the owner of provider credentials or native session authority.
 
 The current focus is:
 
 Priority:
 
+- Explicit trust and ownership boundaries
 - Security and safe defaults
 - Bug fixes and stability
-- Setup reliability and first-run UX
+- Native session and worker reliability
 
 Next priorities:
 
-- Supporting all major model providers
-- Improving support for major messaging channels (and adding a few high-demand ones)
+- Provider-boundary correctness and credential isolation
+- Improving inherited messaging and device integrations
 - Performance and test infrastructure
-- Better computer-use and agent harness capabilities
+- Better native worker and agent harness capabilities
 - Ergonomics across CLI and web frontend
 - Companion apps on macOS, iOS, Android, Windows, and Linux
 
@@ -66,7 +75,7 @@ Privacy follows the same default rule.
 OpenClaw sends no usage analytics, tracking identifiers, or telemetry attribution to the project unless the operator turned that on themselves.
 This rule governs what leaves your install. It is not a rule about shared Gateways: when you join a team Gateway, the people you share it with see the work you do there, and features like Git co-author credit exist to attribute that work to you.
 The setup wizard offers optional anonymous feature statistics, with no selected by default; the daily update check reports version and platform and can be disabled.
-See [Usage telemetry and update checks](https://docs.openclaw.ai/gateway/telemetry).
+See [Usage telemetry and update checks](gateway/telemetry).
 
 ## Plugins & Memory
 

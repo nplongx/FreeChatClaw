@@ -68,6 +68,15 @@ function classifyNodeMethodFailure(
   ) {
     return "legacy-unsupported";
   }
+  // Bootstrap auto-approval rotates the node pairing generation after the
+  // initial hello. Optional capability publications can race that rotation;
+  // this is transport/lifecycle transient, not an operator rejection.
+  if (
+    error instanceof GatewayClientRequestError &&
+    error.message === "node pairing changed before request dispatch"
+  ) {
+    return "transient";
+  }
   if (error instanceof GatewayClientRequestError && error.gatewayCode === "INVALID_REQUEST") {
     return "rejected";
   }

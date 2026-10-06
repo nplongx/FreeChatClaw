@@ -1,14 +1,14 @@
-# M12 Phase 4 — Provider boundary + ChatGPT Web proof Implementation Plan
+# FreeChatClaw Phase 4 — Provider boundary + ChatGPT Free integration proof Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Prove and harden the M12 Phase 4 provider boundary so the Gateway alone resolves `chatgpt-web/chatgpt-free` through an isolated OpenAI-compatible `/v1` endpoint corresponding to the required ChatGPT Web route, while the ephemeral worker receives no provider credential and cannot fall back to OpenAI Platform/API-key execution.
+**Goal:** Prove and harden the FreeChatClaw Phase 4 provider boundary so the Gateway alone resolves `chatgpt-web/chatgpt-free` through an isolated OpenAI-compatible `/v1` endpoint corresponding to the required ChatGPT Free route, while the ephemeral worker receives no provider credential and cannot fall back to OpenAI Platform/API-key execution.
 
-**Architecture:** Keep provider ownership on the Gateway. The existing worker-inference RPC remains credential-free: it carries only the admitted run identity, `modelRef`, context, and inference options; Gateway-side inference resolves the configured provider route/auth and passes the credential only to the provider transport boundary. Phase 4 adds a narrow M12 policy/verification seam around that existing path, focused tests for credential non-propagation and route identity, and one isolated live proof against the existing non-production adapter/provider endpoint.
+**Architecture:** Keep provider ownership on the Gateway. The existing worker-inference RPC remains credential-free: it carries only the admitted run identity, `modelRef`, context, and inference options; Gateway-side inference resolves the configured provider route/auth and passes the credential only to the provider transport boundary. Phase 4 adds a narrow FreeChatClaw policy/verification seam around that existing path, focused tests for credential non-propagation and route identity, and one isolated live proof against the existing non-production adapter/provider endpoint.
 
 **Tech Stack:** TypeScript, Vitest, OpenClaw Gateway worker-inference RPC, provider model-route/auth preparation, OpenAI-compatible transport, isolated Gateway state, and an isolated ChatGPT Web-compatible `/v1` provider endpoint.
 
-**Spec:** `docs/m12-phase3-plan.md` plus the M12 task specification supplied for this phase (Phase 3 defers provider proof; Phase 4 requires `modelRef -> chatgpt-web/chatgpt-free -> Gateway provider -> 127.0.0.1:8318/v1 -> ChatGPT Web`, with no provider credential visible to the runner).
+**Spec:** `docs/phase3-plan.md` plus the FreeChatClaw task specification supplied for this phase (Phase 3 defers provider proof; Phase 4 requires `modelRef -> chatgpt-web/chatgpt-free -> Gateway provider -> 127.0.0.1:8318/v1 -> ChatGPT Web`, with no provider credential visible to the runner).
 
 ## Global Constraints
 
@@ -20,7 +20,7 @@
 - Never use `--session-host`, local `sessions_spawn`, `operator.admin`, or local execution fallback.
 - Never put provider credentials into worker admission, worker-inference request/response frames, node environment metadata, runner result files, or worker workspace artifacts.
 - Never use `extraBody.tool_choice`; the existing native-exec compatibility seam remains unchanged.
-- Canonical profile remains `coding`; do not switch the M12 path to `full`.
+- Canonical profile remains `coding`; do not switch the FreeChatClaw path to `full`.
 - Shared lifecycle admission lease and provider device lease remain independent.
 - `nodeDeviceId` remains environment/device binding only; it is not part of the shared lifecycle lease.
 - Do not weaken strict placement or provider authorization to make tests pass.
@@ -41,13 +41,13 @@
 
 Expected Phase 4 implementation surface is intentionally narrow:
 
-- Modify: `src/gateway/worker-environments/inference-runtime.ts` — add the smallest M12 provider-boundary enforcement/telemetry hook needed to attest that the selected provider is the Gateway-owned ChatGPT Web route and that credential material never enters worker protocol data.
+- Modify: `src/gateway/worker-environments/inference-runtime.ts` — add the smallest FreeChatClaw provider-boundary enforcement/telemetry hook needed to attest that the selected provider is the Gateway-owned ChatGPT Free route and that credential material never enters worker protocol data.
 - Modify: `src/gateway/worker-environments/inference-runtime.test.ts` or the nearest existing inference-runtime test surface if present — unit-test Gateway-only credential resolution and provider stream handoff.
-- Create: `src/gateway/worker-environments/inference-runtime.m12-provider-boundary.test.ts` — isolated M12-focused tests for provider identity, credential non-propagation, and fail-closed behavior. Keep this separate from generic inference tests.
+- Create: `src/gateway/worker-environments/inference-runtime.m12-provider-boundary.test.ts` — isolated FreeChatClaw-focused tests for provider identity, credential non-propagation, and fail-closed behavior. Keep this separate from generic inference tests.
 - Modify: `packages/gateway-protocol/src/schema/worker-inference.ts` only if a schema-level assertion/brand is required to make credential absence explicit; do not add a credential field.
 - Create/modify: `src/gateway/server-methods/m12-specialist.test.ts` only if the specialist fixture must prove the fixed `chatgpt-web/chatgpt-free` modelRef survives session creation and dispatch unchanged.
 - Create: `src/gateway/server-methods/m12-phase4.acceptance.test.ts` — provider-boundary acceptance harness combining modelRef, route, auth ownership, worker payload inspection, and negative credential assertions.
-- Modify: `docs/m12-phase3-plan.md` only after implementation/validation to link Phase 4 evidence; do not rewrite Phase 3 history.
+- Modify: `docs/phase3-plan.md` only after implementation/validation to link Phase 4 evidence; do not rewrite Phase 3 history.
 - No adapter source files are in scope.
 
 ## Interfaces
@@ -62,7 +62,7 @@ The existing worker inference contract remains authoritative:
 If a new helper is needed, prefer one small pure boundary function with an explicit tuple such as:
 
 ```ts
-assertM12ProviderBoundary(params: {
+assertFreeChatClawProviderBoundary(params: {
   provider: string;
   modelId: string;
   api: string;
@@ -87,15 +87,15 @@ It must return `void` on the exact approved tuple and throw a bounded error othe
 - Produces: executable assertions that define the exact Phase 4 contract before implementation changes.
 
 - [ ] **Step 1: Write the failing provider-boundary tests.**
-  - Assert the M12 model tuple is exactly `provider=chatgpt-web`, `model=chatgpt-free`, `api=openai-completions`.
+  - Assert the FreeChatClaw model tuple is exactly `provider=chatgpt-web`, `model=chatgpt-free`, `api=openai-completions`.
   - Assert the isolated provider route is `http://127.0.0.1:<isolated-adapter-port>/v1`; use a dynamically allocated isolated port in the test harness rather than hard-coding production `8318`.
   - Assert a worker-inference start request contains no `apiKey`, `credential`, `authorization`, or equivalent provider-secret field.
   - Assert a sentinel provider credential such as `m12-phase4-gateway-secret` is absent from the serialized worker request and node-facing result.
-  - Assert a wrong provider such as `openai/gpt-*` is rejected by the M12 boundary instead of being silently substituted.
+  - Assert a wrong provider such as `openai/gpt-*` is rejected by the FreeChatClaw boundary instead of being silently substituted.
 
 - [ ] **Step 2: Run only the new tests.**
   - Run: `pnpm test src/gateway/worker-environments/inference-runtime.m12-provider-boundary.test.ts src/gateway/server-methods/m12-phase4.acceptance.test.ts`
-  - Expected: FAIL because the explicit M12 provider-boundary enforcement/fixture does not yet exist.
+  - Expected: FAIL because the explicit FreeChatClaw provider-boundary enforcement/fixture does not yet exist.
 
 - [ ] **Step 3: Record the exact current transport seam.**
   - Pin the existing call sequence in the test fixture: model resolution -> auth preparation -> `registerProviderStreamForModel` -> provider stream invocation.
@@ -111,10 +111,10 @@ It must return `void` on the exact approved tuple and throw a bounded error othe
 **Interfaces:**
 
 - Consumes: resolved `approved.provider`, `approved.model`, prepared model metadata, Gateway-resolved auth.
-- Produces: a fail-closed M12 assertion before provider transport invocation.
+- Produces: a fail-closed FreeChatClaw assertion before provider transport invocation.
 
 - [ ] **Step 1: Implement the smallest pure boundary assertion.**
-  - Validate only the M12 Phase 4 execution tuple required by the task: provider `chatgpt-web`, model `chatgpt-free`, API `openai-completions`, and an isolated ChatGPT Web base URL supplied by Gateway configuration.
+  - Validate only the FreeChatClaw Phase 4 execution tuple required by the task: provider `chatgpt-web`, model `chatgpt-free`, API `openai-completions`, and an isolated ChatGPT Web base URL supplied by Gateway configuration.
   - Do not resolve secrets in this helper.
   - Do not pass the credential to any worker RPC object, transcript metadata, or runner callback.
 
@@ -125,7 +125,7 @@ It must return `void` on the exact approved tuple and throw a bounded error othe
   - Do not change `WorkerInferenceStartParamsSchema`.
 
 - [ ] **Step 3: Add fail-closed tests.**
-  - Wrong provider -> `provider-error` or bounded M12 policy error.
+  - Wrong provider -> `provider-error` or bounded FreeChatClaw policy error.
   - Wrong model -> rejected.
   - Wrong API -> rejected.
   - Missing/empty Gateway auth -> rejected before provider request.
@@ -176,7 +176,7 @@ It must return `void` on the exact approved tuple and throw a bounded error othe
 
 - Create: `src/gateway/server-methods/m12-phase4.acceptance.test.ts` if Task 3 has not already created it; otherwise extend the same acceptance harness.
 - Create: an isolated test launcher/config only under a temporary runtime directory; do not commit runtime state.
-- Modify: `docs/m12-phase3-plan.md` only after the first complete Phase 4 evidence set.
+- Modify: `docs/phase3-plan.md` only after the first complete Phase 4 evidence set.
 
 **Interfaces:**
 
@@ -186,11 +186,11 @@ It must return `void` on the exact approved tuple and throw a bounded error othe
 - [ ] **Step 1: Start an isolated ChatGPT Web adapter endpoint.**
   - Use a non-production port and isolated state/config.
   - The endpoint must be OpenAI-compatible at `/v1`.
-  - It must exercise the real ChatGPT Web route/provider behavior required by the Phase 4 environment; do not replace it with a fake provider response if the acceptance claim is intended to be live.
+  - It must exercise the real ChatGPT Free route/provider behavior required by the Phase 4 environment; do not replace it with a fake provider response if the acceptance claim is intended to be live.
   - Never start/reconfigure `127.0.0.1:8318`.
 
 - [ ] **Step 2: Start an isolated Gateway from the exact current build.**
-  - Use a fresh state directory and a unique M12 task/admission/environment/node identity.
+  - Use a fresh state directory and a unique FreeChatClaw task/admission/environment/node identity.
   - Confirm the built Gateway imports the current source revision.
   - Record build artifact path/hash and isolated ports before dispatch.
 
@@ -222,7 +222,7 @@ It must return `void` on the exact approved tuple and throw a bounded error othe
 
 - Create/modify: `src/gateway/server-methods/m12-phase4.acceptance.test.ts`
 - Create/modify: `src/gateway/worker-environments/inference-runtime.m12-provider-boundary.test.ts`
-- Modify: `src/agents/embedded-agent-runner/run/auth-store.test.ts` only if the current attempt-dispatch contract needs an explicit M12 regression assertion.
+- Modify: `src/agents/embedded-agent-runner/run/auth-store.test.ts` only if the current attempt-dispatch contract needs an explicit FreeChatClaw regression assertion.
 
 **Interfaces:**
 
@@ -254,7 +254,7 @@ It must return `void` on the exact approved tuple and throw a bounded error othe
 
 **Files:**
 
-- Modify: `docs/m12-phase3-plan.md` only after all gates pass.
+- Modify: `docs/phase3-plan.md` only after all gates pass.
 - No implementation files should be changed during this task except a test fix that is directly proven necessary by a failing Phase 4 gate.
 
 **Interfaces:**
@@ -267,7 +267,7 @@ It must return `void` on the exact approved tuple and throw a bounded error othe
   - Run: `git diff --name-only -- /home/long/work/chatgpt-adapter/server.js /home/long/work/chatgpt-adapter/scripts/runner-agent-openclaw.js /home/long/work/chatgpt-adapter/tests/test-m12-runner-agent.js`
   - Expected: no forbidden adapter files in the diff.
 
-- [ ] **Step 2: Scan the M12 diff for forbidden mechanisms.**
+- [ ] **Step 2: Scan the FreeChatClaw diff for forbidden mechanisms.**
   - Check the current diff for `OPENAI_API_KEY`, `--session-host`, `operator.admin`, local `sessions_spawn`, `tool_choice`, and any proof writer.
   - Expected: no newly added forbidden mechanism.
 
@@ -323,7 +323,7 @@ It must return `void` on the exact approved tuple and throw a bounded error othe
     ```
   - Claim TypeScript PASS only if the output contains `TSC_EXIT=0`. A timeout is not PASS.
 
-- [ ] **Step 8: Write the Phase 4 evidence summary into `docs/m12-phase3-plan.md`.**
+- [ ] **Step 8: Write the Phase 4 evidence summary into `docs/phase3-plan.md`.**
   - Add a dated Phase 4 evidence section.
   - Include exact isolated provider endpoint, current build artifact, modelRef, session/run identity, and credential-boundary results.
   - Do not rewrite or upgrade the Phase 3 acceptance history.
@@ -364,13 +364,13 @@ Stop the implementation instead of adding another workaround if any of the follo
 
 - Phase 5 crash/isolation matrix.
 - Phase 6 ten-role production-shaped E2E.
-- Phase 7 overall M12 acceptance.
+- Phase 7 overall FreeChatClaw acceptance.
 - Production Gateway/adapter changes.
 - Provider credential delivery to the runner.
 - OpenAI Platform API integration.
 - Replacing the existing native worker execution chain.
 - Reintroducing `context.tools` dependency or `extraBody.tool_choice`.
-- Changing the canonical M12 profile from `coding`.
+- Changing the canonical FreeChatClaw profile from `coding`.
 
 ## Self-Review
 
@@ -398,7 +398,7 @@ All five review-focus failure classes have explicit tests in Tasks 1, 2, 3, and 
 
 ### 5. Proportion
 
-The plan intentionally avoids redesigning the existing inference/auth stack. It adds only the smallest M12 policy seam plus focused tests and an isolated E2E proof.
+The plan intentionally avoids redesigning the existing inference/auth stack. It adds only the smallest FreeChatClaw policy seam plus focused tests and an isolated E2E proof.
 
 ## Execution Handoff
 

@@ -12,6 +12,7 @@ import {
   tooltipTitleText,
 } from "../../../ui/src/e2e/control-ui-e2e-suite.test-support.ts";
 import { createQaGatewayChild } from "../api.ts";
+import { connectOperator as connectGatewayOperator } from "./gateway-operator-client.js";
 
 const COMMAND = "codex.exec-server.stdio.v1";
 const MODEL = "openai/gpt-5.6-luna";
@@ -296,15 +297,7 @@ suite.define(() => {
 type GatewayHandle = Awaited<ReturnType<ReturnType<typeof createQaGatewayChild>["start"]>>;
 
 async function connectOperator(gateway: GatewayHandle): Promise<GatewayClient> {
-  return await connectClient({
-    gateway,
-    role: "operator",
-    clientName: GATEWAY_CLIENT_NAMES.GATEWAY_CLIENT,
-    clientDisplayName: "Session host picker proof operator",
-    mode: GATEWAY_CLIENT_MODES.BACKEND,
-    scopes: ["operator.admin", "operator.pairing", "operator.read", "operator.write"],
-    deviceIdentity: null,
-  });
+  return await connectGatewayOperator(gateway);
 }
 
 async function connectPairedNode(params: {

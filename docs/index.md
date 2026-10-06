@@ -1,11 +1,11 @@
 ---
-summary: "OpenClaw is an open-source AI assistant that runs on your own hardware and meets you in every chat app you already use."
+summary: "FreeChatClaw is a maintained OpenClaw fork focused on native session orchestration, worker placement, and ChatGPT Free integration."
 read_when:
   - Introducing OpenClaw to newcomers
-title: "OpenClaw"
+title: "FreeChatClaw"
 ---
 
-# OpenClaw 🦞
+# FreeChatClaw
 
 <p align="center">
     <img
@@ -25,9 +25,9 @@ title: "OpenClaw"
 > _"EXFOLIATE! EXFOLIATE!"_ — A space lobster, probably
 
 <p align="center">
-  <strong>Your AI assistant, on your own hardware, in every chat app you already use.</strong><br />
-  One Gateway. Any model. Any device. No hosted service in the middle.<br />
-  Developed in the open by the <a href="https://openclaw.org">OpenClaw Foundation</a>, an independent 501(c)(3). No paid tier, no telemetry by default beyond a <a href="/gateway/telemetry">version check</a> you can turn off, no lab owns it.
+  <strong>An OpenClaw fork for native sessions and worker-backed execution.</strong><br />
+  One Gateway control plane, explicit worker placement, and Gateway-owned provider boundaries.<br />
+  FreeChatClaw retains OpenClaw compatibility where practical while documenting FreeChatClaw-owned runtime behavior separately.
 </p>
 
 <Columns>
@@ -89,18 +89,18 @@ these hub links to reach the same top-level docs areas from the page body.
   </Card>
 </Columns>
 
-## What is OpenClaw?
+## What is FreeChatClaw?
 
-OpenClaw is a **self-hosted gateway** that connects your favorite chat apps — Discord, Google Chat, iMessage, Matrix, Microsoft Teams, Signal, Slack, Telegram, WhatsApp, Zalo, and more via channel plugins — to AI coding agents. You run a single Gateway process on your own machine (or a server), and it becomes the bridge between your messaging apps and an always-available AI assistant.
+FreeChatClaw is a **maintained fork of OpenClaw**. It keeps the upstream Gateway, protocol, channels, plugins, nodes, and agent-runtime foundations, then adds a native worker execution layer with explicit placement, provider ownership, and ChatGPT Free integration rules.
 
 **Who is it for?** Developers, power users, and teams who want an AI assistant they can message from anywhere — without giving up control of their data or relying on a hosted service. The same gateway runs as a personal assistant on one laptop or as a shared [team deployment](/start/teams); configuration is the only difference.
 
-**What makes it different?**
+**What makes FreeChatClaw different?**
 
-- **Self-hosted**: runs on your hardware, your rules
-- **Multi-channel**: one Gateway serves every configured channel plugin simultaneously
-- **Agent-native**: built for coding agents with tool use, sessions, memory, and multi-agent routing
-- **Open source**: MIT licensed, community-driven
+- **Native sessions**: FreeChatClaw preserves the real native session/run lifecycle instead of synthesizing local results
+- **Worker placement**: execution can be admitted onto an existing paired device worker
+- **Gateway-owned providers**: provider authentication stays in the Gateway provider boundary
+- **OpenClaw compatibility**: inherited OpenClaw surfaces remain available unless explicitly changed by FreeChatClaw
 
 The full architecture case — a trusted gateway, untrusted execution, deterministic policy, and how one product spans personal and team use — is in [Why OpenClaw](/start/why-openclaw).
 
@@ -110,15 +110,25 @@ The full architecture case — a trusted gateway, untrusted execution, determini
 
 ```mermaid
 flowchart LR
-  A["Chat apps + plugins"] --> B["Gateway"]
-  B --> C["OpenClaw agent"]
-  B --> D["CLI"]
-  B --> E["Web Control UI"]
-  B --> F["macOS app"]
-  B --> G["iOS and Android nodes"]
+  A["Clients + channels + plugins"] --> B["FreeChatClaw Gateway"]
+  B --> C["Native session"]
+  C --> D["Worker placement"]
+  D --> E["Paired node / worker"]
+  B --> F["Gateway provider boundary"]
+  F --> G["Provider / adapter"]
 ```
 
-The Gateway is the single source of truth for sessions, routing, and channel connections.
+The Gateway remains the control-plane owner for sessions, routing, placement,
+and provider authentication. Workers execute admitted work; they do not own
+provider credentials.
+
+## FreeChatClaw architecture docs
+
+- [Architecture](/architecture)
+- [Runtime topology](/runtime-topology)
+- [Provider and inference architecture](/provider-inference)
+- [Development and validation](/development-validation)
+- [Fork identity and compatibility](/fork-identity)
 
 ## Key capabilities
 

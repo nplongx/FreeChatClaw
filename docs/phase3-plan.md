@@ -1,8 +1,8 @@
-# M12 Phase 3 — Native specialist session implementation + acceptance plan
+# FreeChatClaw Phase 3 — Native specialist session implementation + acceptance plan
 
 ## Scope
 
-Implement the frozen M12 Phase 3 path on OpenClaw 2026.9.5 and the adapter:
+Implement the frozen FreeChatClaw Phase 3 path on OpenClaw 2026.9.5 and the adapter:
 
 GitHub Actions admission -> ephemeral node -> node-scoped specialist RPC -> native OpenClaw session/run -> exact admitted-node placement -> native result -> durable adapter reconciliation.
 
@@ -142,7 +142,7 @@ below are green in one coherent evidence set:
 
 | Gate                           | Required evidence                                                      | Failure condition                                        |
 | ------------------------------ | ---------------------------------------------------------------------- | -------------------------------------------------------- |
-| G1 source integrity            | `git diff --check`; relevant diff reviewed                             | whitespace/error or unexplained M12 edit                 |
+| G1 source integrity            | `git diff --check`; relevant diff reviewed                             | whitespace/error or unexplained FreeChatClaw edit        |
 | G2 build provenance            | isolated build exits with explicit `BUILD_EXIT=0`                      | build exit missing/non-zero                              |
 | G3 admission                   | fresh GitHub-bound admission, environment, lease, owner epoch          | reused/expired/cross-task admission                      |
 | G4 node bootstrap              | ephemeral node connects with `role=node`, `scopes=[]`                  | operator scope/provider credential or wrong node         |
@@ -154,7 +154,7 @@ below are green in one coherent evidence set:
 | G10 worker proof               | proof file is created by the worker execution in its managed workspace | proof created outside worker execution                   |
 | G11 terminal result            | native run reaches terminal result tied to same session/run            | detached or locally synthesized result                   |
 | G12 provenance boundary        | runner/result contains no provider credential; no Platform API         | `OPENAI_API_KEY`, OpenAI Platform, or credential leakage |
-| G13 focused tests              | M12 unit/specialist/acceptance tests pass after latest patch           | stale pre-patch test result                              |
+| G13 focused tests              | FreeChatClaw unit/specialist/acceptance tests pass after latest patch  | stale pre-patch test result                              |
 | G14 TypeScript                 | explicit `TSC_EXIT=0` if claimed                                       | timeout/non-zero/unverified                              |
 | G15 forbidden/production audit | adapter forbidden files unchanged; production ports only inspected     | forbidden edit or production restart/change              |
 
@@ -243,7 +243,7 @@ Then verify runner disconnect/reclaim remains intact.
 - Phase 4 provider proof
 - Phase 5 full crash/isolation matrix
 - Phase 6 ten-role production-shaped E2E
-- Phase 7 M12 acceptance
+- Phase 7 FreeChatClaw acceptance
 - production restart
 - OpenAI Platform API integration
 - provider credential delivery to runner

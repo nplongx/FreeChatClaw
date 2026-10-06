@@ -1,7 +1,7 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "name": "OpenClaw",
-  "description": "Self-hosted gateway that connects Discord, Google Chat, iMessage, Matrix, Microsoft Teams, Signal, Slack, Telegram, WhatsApp, Zalo, and more to AI coding agents. Run one Gateway process on your own machine and message your AI assistant from anywhere.",
+  "name": "FreeChatClaw",
+  "description": "FreeChatClaw is an OpenClaw-based native AI gateway focused on native session orchestration, worker placement, device-backed execution, and ChatGPT Free integration through a Gateway-owned provider boundary.",
   "theme": "mint",
   "icons": {
     "library": "lucide"
@@ -1375,6 +1375,21 @@
                   "start/teams",
                   "start/wizard-cli-reference",
                   "start/wizard-cli-automation"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "FreeChatClaw architecture",
+            "groups": [
+              {
+                "group": "System",
+                "pages": [
+                  "architecture",
+                  "runtime-topology",
+                  "provider-inference",
+                  "development-validation",
+                  "fork-identity"
                 ]
               }
             ]

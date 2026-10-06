@@ -7,14 +7,14 @@
       "agent": 21
     }
   },
-  "description": "Multi-channel AI gateway with extensible messaging integrations",
+  "description": "FreeChatClaw native AI gateway, forked from OpenClaw, with native sessions, worker placement, and Gateway-owned provider boundaries",
   "keywords": [],
   "homepage": "https://github.com/openclaw/openclaw#readme",
   "bugs": {
     "url": "https://github.com/openclaw/openclaw/issues"
   },
   "license": "MIT",
-  "author": "OpenClaw Foundation (https://openclaw.org)",
+  "author": "FreeChatClaw contributors",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/openclaw/openclaw.git"

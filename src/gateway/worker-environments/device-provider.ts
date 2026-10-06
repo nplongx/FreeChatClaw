@@ -140,7 +140,10 @@ export function createDeviceWorkerRuntime(options: DeviceWorkerRuntimeOptions) {
     id: DEVICE_WORKER_PROVIDER_ID,
     supportedExecutionModes: ["worker-turn", "remote-exec"],
     provisionBeforeInstallation: true,
-    requiresNodeEnrollment: true,
+    // Device placement targets an already paired node host. Enrollment belongs to
+    // dedicated cloud providers; forcing it here makes native device dispatch wait
+    // for a second, unowned worker node instead of admitting the selected device.
+    requiresNodeEnrollment: false,
     resolveProvisionTimeoutMs: () => 5 * 60_000,
     resolveAllocation: async (profile, operationId) => ({
       leaseId: deviceLeaseId(requireDeviceId(profile), operationId),
